@@ -1,4 +1,4 @@
-const CACHE_NAME = 'binmanager-v1';
+const CACHE_NAME = 'binmanager-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -9,7 +9,7 @@ const ASSETS = [
   './manifest.json',
   'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js',
-  'https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js',
+  'https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js',
 ];
 
 self.addEventListener('install', (e) => {
