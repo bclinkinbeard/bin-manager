@@ -173,7 +173,7 @@ async function openBin(id) {
   }
 
   $('bin-detail-id').textContent = bin.id;
-  $('bin-detail-name').textContent = bin.name || '(unnamed)';
+  $('bin-detail-name').textContent = bin.name || '';
   $('bin-detail-loc').textContent = bin.location || '';
   $('bin-detail-desc').textContent = bin.description || '';
 
