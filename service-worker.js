@@ -1,4 +1,4 @@
-const CACHE_NAME = 'binmanager-v2';
+const CACHE_NAME = 'binmanager-v3';
 const ASSETS = [
   './',
   './index.html',
