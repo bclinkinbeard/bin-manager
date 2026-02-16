@@ -2,10 +2,150 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Egghead D3 v4</title>
-  <script src="//d3js.org/d3.v4.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>BinManager</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#121212">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23121212'/><text x='50' y='68' font-size='50' text-anchor='middle' fill='%23ff9800' font-family='monospace'>B</text></svg>">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 </head>
 <body>
-  <script src="src/app.js"></script>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>BinManager</h1>
+    <div class="stats">
+      <span id="stat-bins">0</span> bins &middot; <span id="stat-items">0</span> items
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main">
+
+    <!-- Search view -->
+    <div id="view-search" class="view active">
+      <div class="search-box">
+        <input type="text" id="search-input" placeholder="Search bins and items...">
+      </div>
+      <ul id="search-results" class="results-list"></ul>
+      <div id="search-empty" class="empty-state">
+        No bins yet. Scan a QR code or create a bin to start.
+      </div>
+    </div>
+
+    <!-- Scan view -->
+    <div id="view-scan" class="view">
+      <div id="scan-reader"></div>
+      <p class="scan-status" id="scan-status">Point camera at a QR code</p>
+    </div>
+
+    <!-- Bin detail view -->
+    <div id="view-bin" class="view">
+      <button class="btn-back" id="bin-back">&larr; Back</button>
+      <div class="bin-header">
+        <div class="id-row">
+          <span class="bin-id-large" id="bin-detail-id"></span>
+          <button class="btn btn-danger" id="bin-delete" style="padding:6px 12px;font-size:11px;">Delete</button>
+        </div>
+        <div class="bin-name-large" id="bin-detail-name"></div>
+        <div class="bin-loc" id="bin-detail-loc"></div>
+        <div class="bin-desc" id="bin-detail-desc"></div>
+      </div>
+      <div class="section-title">Items</div>
+      <div id="bin-items-list"></div>
+      <button class="btn btn-primary btn-block" id="bin-add-item" style="margin-top:12px;">+ Add Item</button>
+    </div>
+
+    <!-- Create / edit bin form -->
+    <div id="view-bin-form" class="view">
+      <button class="btn-back" id="bin-form-back">&larr; Back</button>
+      <h2 style="font-size:16px;margin-bottom:16px;" id="bin-form-title">New Bin</h2>
+      <div class="form-group">
+        <label>Bin ID</label>
+        <input type="text" id="bin-form-id" readonly>
+      </div>
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="bin-form-name" placeholder="e.g. Resistors 10k">
+      </div>
+      <div class="form-group">
+        <label>Location</label>
+        <input type="text" id="bin-form-location" placeholder="e.g. Shelf A, Row 3">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea id="bin-form-desc" placeholder="Optional notes..."></textarea>
+      </div>
+      <button class="btn btn-primary btn-block" id="bin-form-save">Save Bin</button>
+    </div>
+
+    <!-- Add item form -->
+    <div id="view-item-form" class="view">
+      <button class="btn-back" id="item-form-back">&larr; Back</button>
+      <h2 style="font-size:16px;margin-bottom:16px;">Add Item</h2>
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" id="item-form-desc" placeholder="What is this item?">
+      </div>
+      <div class="form-group">
+        <label>Photo</label>
+        <div class="photo-input-wrap">
+          <button class="btn btn-secondary photo-btn" id="item-photo-btn">Take Photo</button>
+          <img class="photo-preview" id="item-photo-preview" alt="">
+          <input type="file" accept="image/*" capture="environment" id="item-photo-input" style="display:none;">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" id="item-form-save">Save Item</button>
+    </div>
+
+    <!-- Print labels view -->
+    <div id="view-labels" class="view">
+      <button class="btn-back" id="labels-back">&larr; Back</button>
+      <h2 style="font-size:16px;margin-bottom:16px;">Print QR Labels</h2>
+      <div class="print-controls">
+        <button class="btn btn-primary" id="labels-print">Print Labels</button>
+        <button class="btn btn-secondary" id="labels-create">+ Generate New Bins</button>
+      </div>
+      <div class="form-group print-controls" id="generate-controls" style="display:none;">
+        <input type="number" id="generate-count" min="1" max="100" value="10" style="width:80px;">
+        <button class="btn btn-primary" id="generate-go">Generate</button>
+        <button class="btn btn-secondary" id="generate-cancel">Cancel</button>
+      </div>
+      <div id="labels-grid" class="label-grid"></div>
+    </div>
+
+  </div>
+
+  <!-- Bottom nav -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-view="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Search
+    </button>
+    <button class="nav-btn" data-view="scan">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Scan
+    </button>
+    <button class="nav-btn" data-view="labels">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="12" y2="15"/></svg>
+      Labels
+    </button>
+    <button class="nav-btn" data-view="export">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export
+    </button>
+  </nav>
+
+  <script type="module" src="src/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./service-worker.js');
+    }
+  </script>
 </body>
 </html>
