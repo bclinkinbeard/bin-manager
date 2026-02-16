@@ -1,4 +1,4 @@
-const CACHE_NAME = 'binmanager-v5';
+const CACHE_NAME = 'binmanager-v6';
 const FONT_CACHE = 'binmanager-fonts-v1';
 const ASSETS = [
   './',

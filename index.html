@@ -35,6 +35,11 @@
       <div class="search-box">
         <input type="text" id="search-input" placeholder="Search bins and items...">
       </div>
+      <div class="search-filters">
+        <label class="toggle-label">
+          <input type="checkbox" id="search-show-archived"> Show archived
+        </label>
+      </div>
       <ul id="search-results" class="results-list"></ul>
       <div id="search-empty" class="empty-state">
         No bins yet. Scan a QR code or create a bin to start.
@@ -53,16 +58,27 @@
       <div class="bin-header">
         <div class="id-row">
           <span class="bin-id-large" id="bin-detail-id"></span>
-          <div class="id-row-actions">
-            <button class="btn btn-secondary" id="bin-edit" style="padding:6px 12px;font-size:11px;">Edit</button>
-            <button class="btn btn-danger" id="bin-delete" style="padding:6px 12px;font-size:11px;">Delete</button>
-          </div>
+          <span class="archive-badge" id="bin-detail-archive-badge" style="display:none;">Archived</span>
         </div>
         <div class="bin-name-large" id="bin-detail-name"></div>
         <div class="bin-loc" id="bin-detail-loc"></div>
         <div class="bin-desc" id="bin-detail-desc"></div>
+        <div class="bin-actions">
+          <button class="btn btn-secondary btn-sm" id="bin-edit">Edit</button>
+          <button class="btn btn-secondary btn-sm" id="bin-archive">Archive</button>
+          <button class="btn btn-secondary btn-sm" id="bin-print-contents">Print</button>
+          <button class="btn btn-danger btn-sm" id="bin-delete">Delete</button>
+        </div>
       </div>
-      <div class="section-title">Items</div>
+      <div class="sort-bar">
+        <span class="section-title" style="margin-bottom:0;">Items</span>
+        <select id="item-sort" class="sort-select">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="az">A &rarr; Z</option>
+          <option value="za">Z &rarr; A</option>
+        </select>
+      </div>
       <div id="bin-items-list"></div>
       <button class="btn btn-primary btn-block" id="bin-add-item" style="margin-top:12px;">+ Add Item</button>
     </div>
@@ -90,13 +106,17 @@
       <button class="btn btn-primary btn-block" id="bin-form-save">Save Bin</button>
     </div>
 
-    <!-- Add item form -->
+    <!-- Add / edit item form -->
     <div id="view-item-form" class="view">
       <button class="btn-back" id="item-form-back">&larr; Back</button>
-      <h2 style="font-size:16px;margin-bottom:16px;">Add Item</h2>
+      <h2 style="font-size:16px;margin-bottom:16px;" id="item-form-title">Add Item</h2>
       <div class="form-group">
         <label for="item-form-desc">Description</label>
         <input type="text" id="item-form-desc" placeholder="What is this item?">
+      </div>
+      <div class="form-group">
+        <label for="item-form-tags">Tags</label>
+        <input type="text" id="item-form-tags" placeholder="e.g. electronics, spare (comma-separated)">
       </div>
       <div class="form-group">
         <label for="item-photo-input">Photo</label>
@@ -125,21 +145,45 @@
       <div id="labels-grid" class="label-grid"></div>
     </div>
 
-    <!-- Data (export/import) view -->
+    <!-- Data management view -->
     <div id="view-data" class="view">
       <h2 style="font-size:16px;margin-bottom:16px;">Data Management</h2>
       <div class="data-actions">
-        <button class="btn btn-primary btn-block" id="data-export">Export Data (JSON)</button>
-        <div class="data-divider"></div>
-        <button class="btn btn-secondary btn-block" id="data-import-btn">Import Data (JSON)</button>
+        <button class="btn btn-primary btn-block" id="data-export" style="margin-bottom:10px;">Export Data (JSON)</button>
+        <button class="btn btn-secondary btn-block" id="data-import-btn" style="margin-bottom:10px;">Import Data (JSON)</button>
         <input type="file" accept=".json,application/json" id="data-import-input" style="display:none;">
-        <p class="data-warning" id="data-import-warning">Import will replace all existing data.</p>
+      </div>
+      <div id="import-preview" style="display:none;">
+        <div class="import-summary" id="import-summary"></div>
+        <div class="form-group">
+          <label for="import-mode">Import Mode</label>
+          <select id="import-mode" class="sort-select" style="width:100%;">
+            <option value="merge">Merge (add missing bins/items)</option>
+            <option value="replace">Replace (wipe and restore)</option>
+          </select>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="import-confirm">Import</button>
+          <button class="btn btn-secondary" id="import-cancel">Cancel</button>
+        </div>
       </div>
     </div>
 
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Confirmation modal -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-title" id="modal-title"></div>
+      <div class="modal-message" id="modal-message"></div>
+      <div class="btn-row">
+        <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+        <button class="btn btn-secondary" id="modal-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Bottom nav -->
   <nav class="bottom-nav" aria-label="Main navigation">

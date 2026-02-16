@@ -2,6 +2,7 @@ const DB_NAME = 'binManagerDB';
 const DB_VERSION = 1;
 
 let db = null;
+let dataVersion = 0;
 
 function open() {
   return new Promise((resolve, reject) => {
@@ -55,7 +56,9 @@ async function getBin(id) {
 
 async function putBin(bin) {
   await open();
-  return req(tx('bins', 'readwrite').put(bin));
+  const result = await req(tx('bins', 'readwrite').put(bin));
+  dataVersion++;
+  return result;
 }
 
 async function putBins(bins) {
@@ -75,6 +78,7 @@ async function deleteBin(id) {
     const itemStore = t.objectStore('items');
     for (const item of items) itemStore.delete(item.id);
   }
+  dataVersion++;
   return txComplete(t);
 }
 
@@ -94,8 +98,8 @@ async function getAllItemsLight() {
     cursor.onsuccess = (e) => {
       const c = e.target.result;
       if (c) {
-        const { id, binId, description, addedAt } = c.value;
-        results.push({ id, binId, description, addedAt });
+        const { id, binId, description, addedAt, tags } = c.value;
+        results.push({ id, binId, description, addedAt, tags });
         c.continue();
       } else {
         resolve(results);
@@ -103,6 +107,11 @@ async function getAllItemsLight() {
     };
     cursor.onerror = () => reject(cursor.error);
   });
+}
+
+async function getItem(id) {
+  await open();
+  return req(tx('items', 'readonly').get(id));
 }
 
 async function getItemsByBin(binId) {
@@ -114,12 +123,15 @@ async function getItemsByBin(binId) {
 
 async function putItem(item) {
   await open();
-  return req(tx('items', 'readwrite').put(item));
+  const result = await req(tx('items', 'readwrite').put(item));
+  dataVersion++;
+  return result;
 }
 
 async function deleteItem(id) {
   await open();
-  return req(tx('items', 'readwrite').delete(id));
+  await req(tx('items', 'readwrite').delete(id));
+  dataVersion++;
 }
 
 // ── Counts ──
@@ -148,23 +160,34 @@ async function getNextBinNumber() {
 async function exportAll() {
   const bins = await getAllBins();
   const items = await getAllItems();
-  return { bins, items, exportedAt: new Date().toISOString() };
+  return { version: 1, bins, items, exportedAt: new Date().toISOString() };
 }
 
-async function importAll(data) {
+// ── Import ──
+
+async function importAll(data, mode) {
   await open();
   const t = db.transaction(['bins', 'items'], 'readwrite');
   const binStore = t.objectStore('bins');
   const itemStore = t.objectStore('items');
-  binStore.clear();
-  itemStore.clear();
-  for (const bin of data.bins) binStore.put(bin);
-  for (const item of data.items) itemStore.put(item);
+  if (mode === 'replace') {
+    binStore.clear();
+    itemStore.clear();
+  }
+  for (const bin of (data.bins || [])) binStore.put(bin);
+  for (const item of (data.items || [])) itemStore.put(item);
+  dataVersion++;
   return txComplete(t);
+}
+
+// ── Data version (for Fuse cache invalidation) ──
+
+function getDataVersion() {
+  return dataVersion;
 }
 
 export {
   open, getAllBins, getBin, putBin, putBins, deleteBin,
-  getAllItems, getAllItemsLight, getItemsByBin, putItem, deleteItem,
-  getCounts, getNextBinNumber, exportAll, importAll
+  getAllItems, getAllItemsLight, getItem, getItemsByBin, putItem, deleteItem,
+  getCounts, getNextBinNumber, exportAll, importAll, getDataVersion
 };

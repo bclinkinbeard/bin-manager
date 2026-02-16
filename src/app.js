@@ -23,12 +23,41 @@ const statItems = $('stat-items');
 
 let currentBinId = null;
 let currentPhoto = null;
-let fuse = null;
-let fuseEntries = null;
-let fuseStale = true;
+let currentEditItemId = null;
 let editingBin = null; // null = creating, object = editing
+let fuse = null;
+let fuseDataVersion = -1;
+let fuseEntries = null;
 let debounceTimer = null;
 let scanHandled = false;
+let itemSortOrder = localStorage.getItem('itemSortOrder') || 'newest';
+const ITEMS_PER_PAGE = 20;
+let itemsPage = 1;
+let currentBinItems = [];
+
+// ── Custom Confirmation Modal ──
+
+function confirmAction({ title, message, confirmLabel, danger }) {
+  return new Promise((resolve) => {
+    $('modal-title').textContent = title || 'Confirm';
+    $('modal-message').textContent = message || 'Are you sure?';
+    const confirmBtn = $('modal-confirm');
+    confirmBtn.textContent = confirmLabel || 'Confirm';
+    confirmBtn.className = danger === false ? 'btn btn-primary' : 'btn btn-danger';
+    $('modal-overlay').classList.add('active');
+
+    function cleanup() {
+      $('modal-overlay').classList.remove('active');
+      confirmBtn.removeEventListener('click', onConfirm);
+      $('modal-cancel').removeEventListener('click', onCancel);
+    }
+    function onConfirm() { cleanup(); resolve(true); }
+    function onCancel() { cleanup(); resolve(false); }
+
+    confirmBtn.addEventListener('click', onConfirm);
+    $('modal-cancel').addEventListener('click', onCancel);
+  });
+}
 
 // ── Navigation ──
 
@@ -51,10 +80,6 @@ function showView(name) {
   if (focusable) {
     requestAnimationFrame(() => focusable.focus());
   }
-}
-
-function markFuseStale() {
-  fuseStale = true;
 }
 
 navBtns.forEach((btn) => {
@@ -100,6 +125,11 @@ async function refreshStats() {
 // ── Search ──
 
 async function buildFuse() {
+  const currentVersion = db.getDataVersion();
+  if (fuse && fuseDataVersion === currentVersion) {
+    return fuseEntries;
+  }
+
   const bins = await db.getAllBins();
   const items = await db.getAllItemsLight();
   const entries = [];
@@ -111,6 +141,7 @@ async function buildFuse() {
       location: b.location || '',
       description: b.description || '',
       binId: b.id,
+      archived: b.archived || false,
     });
   }
   for (const item of items) {
@@ -120,24 +151,35 @@ async function buildFuse() {
       name: item.description || '',
       description: '',
       binId: item.binId,
+      tags: (item.tags || []).join(' '),
+      archived: false,
     });
   }
   fuse = new Fuse(entries, {
-    keys: ['id', 'name', 'location', 'description'],
+    keys: ['id', 'name', 'location', 'description', 'tags'],
     threshold: 0.35,
   });
   fuseEntries = entries;
-  fuseStale = false;
+  fuseDataVersion = currentVersion;
   return entries;
 }
 
 async function refreshSearch() {
-  let entries = fuseEntries;
-  if (fuseStale || !fuse) {
-    entries = await buildFuse();
-  }
+  const entries = await buildFuse();
   const q = $('search-input').value.trim();
-  const results = q ? fuse.search(q).map((r) => r.item) : entries.filter((e) => e.type === 'bin');
+  const showArchived = $('search-show-archived').checked;
+
+  let results;
+  if (q) {
+    results = fuse.search(q).map((r) => r.item);
+  } else {
+    results = entries.filter((e) => e.type === 'bin');
+  }
+
+  if (!showArchived) {
+    results = results.filter((r) => !r.archived);
+  }
+
   renderSearchResults(results);
   await refreshStats();
 }
@@ -156,8 +198,8 @@ function renderSearchResults(results) {
   list.innerHTML = results
     .map(
       (r) => `
-    <li class="result-card" data-bin-id="${esc(r.binId)}" tabindex="0" role="button">
-      <div class="bin-id">${esc(r.binId)}</div>
+    <li class="result-card${r.archived ? ' archived' : ''}" data-bin-id="${esc(r.binId)}" tabindex="0" role="button">
+      <div class="bin-id">${esc(r.binId)}${r.archived ? '<span class="archive-badge">Archived</span>' : ''}</div>
       <div class="bin-name">${esc(r.name)}</div>
       <div class="bin-meta">${r.type === 'item' ? 'Item match' : esc(r.location || '')}</div>
     </li>`
@@ -177,6 +219,7 @@ $('search-input').addEventListener('input', () => {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => refreshSearch(), 150);
 });
+$('search-show-archived').addEventListener('change', () => refreshSearch());
 
 // ── Scanner ──
 
@@ -228,42 +271,98 @@ async function openBin(id) {
   $('bin-detail-loc').textContent = bin.location || '';
   $('bin-detail-desc').textContent = bin.description || '';
 
+  // Archive badge
+  $('bin-detail-archive-badge').style.display = bin.archived ? 'inline' : 'none';
+
+  // Archive button text
+  $('bin-archive').textContent = bin.archived ? 'Unarchive' : 'Archive';
+
   const items = await db.getItemsByBin(id);
-  renderBinItems(items);
+  currentBinItems = items;
+  itemsPage = 1;
+  renderBinItems();
   showView('bin');
 }
 
-function renderBinItems(items) {
+function sortItems(items) {
+  const sorted = [...items];
+  switch (itemSortOrder) {
+    case 'oldest':
+      sorted.sort((a, b) => (a.addedAt || '').localeCompare(b.addedAt || ''));
+      break;
+    case 'az':
+      sorted.sort((a, b) => (a.description || '').localeCompare(b.description || ''));
+      break;
+    case 'za':
+      sorted.sort((a, b) => (b.description || '').localeCompare(a.description || ''));
+      break;
+    case 'newest':
+    default:
+      sorted.sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+      break;
+  }
+  return sorted;
+}
+
+function renderBinItems() {
   const container = $('bin-items-list');
-  if (items.length === 0) {
+  const sorted = sortItems(currentBinItems);
+  const paged = sorted.slice(0, itemsPage * ITEMS_PER_PAGE);
+  const hasMore = sorted.length > paged.length;
+
+  if (sorted.length === 0) {
     container.innerHTML = '<div class="empty-state">No items in this bin yet.</div>';
     return;
   }
-  container.innerHTML = items
+
+  container.innerHTML = paged
     .map(
       (item) => `
     <div class="item-card" data-item-id="${esc(item.id)}">
       ${item.photo && item.photo.startsWith('data:image/') ? `<img class="item-photo" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}">` : ''}
       <div class="item-info">
         <div class="item-desc">${esc(item.description)}</div>
+        ${(item.tags && item.tags.length) ? `<div class="item-tags">${item.tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join('')}</div>` : ''}
         <div class="item-date">${formatDate(item.addedAt)}</div>
       </div>
-      <button class="item-delete" data-item-id="${esc(item.id)}" aria-label="Delete ${esc(item.description)}">&times;</button>
+      <div class="item-actions">
+        <button class="item-edit" data-item-id="${esc(item.id)}" title="Edit" aria-label="Edit ${esc(item.description)}">&#9998;</button>
+        <button class="item-delete" data-item-id="${esc(item.id)}" title="Delete" aria-label="Delete ${esc(item.description)}">&times;</button>
+      </div>
     </div>`
     )
-    .join('');
+    .join('') + (hasMore ? `<button class="btn btn-secondary btn-block load-more" style="margin-top:8px;">Load more (${sorted.length - paged.length} remaining)</button>` : '');
 
   container.querySelectorAll('.item-delete').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (confirm('Delete this item?')) {
+      const confirmed = await confirmAction({
+        title: 'Delete Item',
+        message: 'Are you sure you want to delete this item?',
+        confirmLabel: 'Delete',
+      });
+      if (confirmed) {
         await db.deleteItem(btn.dataset.itemId);
-        markFuseStale();
         await openBin(currentBinId);
         await refreshStats();
       }
     });
   });
+
+  container.querySelectorAll('.item-edit').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openEditItemForm(btn.dataset.itemId);
+    });
+  });
+
+  const loadMoreBtn = container.querySelector('.load-more');
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener('click', () => {
+      itemsPage++;
+      renderBinItems();
+    });
+  }
 }
 
 $('bin-back').addEventListener('click', () => {
@@ -272,12 +371,27 @@ $('bin-back').addEventListener('click', () => {
 });
 
 $('bin-delete').addEventListener('click', async () => {
-  if (confirm('Delete this bin and all its items?')) {
+  const itemCount = currentBinItems.length;
+  const confirmed = await confirmAction({
+    title: 'Delete Bin',
+    message: itemCount > 0
+      ? `This bin contains ${itemCount} item${itemCount === 1 ? '' : 's'}. Deleting it will also delete all items.`
+      : 'Delete this empty bin?',
+    confirmLabel: 'Delete Bin',
+  });
+  if (confirmed) {
     await db.deleteBin(currentBinId);
-    markFuseStale();
     showView('search');
     refreshSearch();
   }
+});
+
+$('bin-archive').addEventListener('click', async () => {
+  const bin = await db.getBin(currentBinId);
+  if (!bin) return;
+  bin.archived = !bin.archived;
+  await db.putBin(bin);
+  await openBin(currentBinId);
 });
 
 $('bin-edit').addEventListener('click', async () => {
@@ -287,9 +401,23 @@ $('bin-edit').addEventListener('click', async () => {
 
 $('bin-add-item').addEventListener('click', () => {
   currentPhoto = null;
+  currentEditItemId = null;
   $('item-form-desc').value = '';
+  $('item-form-tags').value = '';
   $('item-photo-preview').style.display = 'none';
+  $('item-form-title').textContent = 'Add Item';
   showView('itemForm');
+});
+
+$('bin-print-contents').addEventListener('click', () => {
+  window.print();
+});
+
+// Sort controls
+$('item-sort').addEventListener('change', (e) => {
+  itemSortOrder = e.target.value;
+  localStorage.setItem('itemSortOrder', itemSortOrder);
+  renderBinItems();
 });
 
 // ── Bin form ──
@@ -306,7 +434,7 @@ function openBinForm(id, existingBin) {
 
 $('bin-form-back').addEventListener('click', () => {
   if (editingBin) {
-    openBin(editingBin.id);
+    openBin(currentBinId);
   } else {
     showView('search');
     refreshSearch();
@@ -316,19 +444,48 @@ $('bin-form-back').addEventListener('click', () => {
 $('bin-form-save').addEventListener('click', async () => {
   const id = $('bin-form-id').value.trim();
   if (!id) return;
+
+  let createdAt = new Date().toISOString();
+  let archived = false;
+
+  if (editingBin) {
+    const existing = await db.getBin(id);
+    if (existing) {
+      createdAt = existing.createdAt;
+      archived = existing.archived || false;
+    }
+  }
+
   await db.putBin({
     id,
     name: $('bin-form-name').value.trim(),
     location: $('bin-form-location').value.trim(),
     description: $('bin-form-desc').value.trim(),
-    createdAt: editingBin ? editingBin.createdAt : new Date().toISOString(),
+    createdAt,
+    archived,
   });
-  markFuseStale();
   await refreshStats();
   openBin(id);
 });
 
 // ── Item form ──
+
+async function openEditItemForm(itemId) {
+  const item = await db.getItem(itemId);
+  if (!item) return;
+  currentEditItemId = itemId;
+  currentPhoto = item.photo || null;
+  $('item-form-desc').value = item.description || '';
+  $('item-form-tags').value = (item.tags || []).join(', ');
+  if (item.photo && item.photo.startsWith('data:image/')) {
+    $('item-photo-preview').src = item.photo;
+    $('item-photo-preview').style.display = 'block';
+  } else {
+    $('item-photo-preview').style.display = 'none';
+  }
+  $('item-form-title').textContent = 'Edit Item';
+  showView('itemForm');
+}
 
 $('item-form-back').addEventListener('click', () => {
   currentPhoto = null;
@@ -342,9 +499,11 @@ $('item-photo-input').addEventListener('change', (e) => {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (ev) => {
-    currentPhoto = ev.target.result;
-    $('item-photo-preview').src = currentPhoto;
-    $('item-photo-preview').style.display = 'block';
+    compressImage(ev.target.result).then((compressed) => {
+      currentPhoto = compressed;
+      $('item-photo-preview').src = currentPhoto;
+      $('item-photo-preview').style.display = 'block';
+    });
   };
   reader.readAsDataURL(file);
 });
@@ -352,23 +511,68 @@ $('item-photo-input').addEventListener('change', (e) => {
 $('item-form-save').addEventListener('click', async () => {
   const desc = $('item-form-desc').value.trim();
   if (!desc) return;
+
+  const tagsStr = $('item-form-tags').value.trim();
+  const tags = tagsStr
+    ? [...new Set(tagsStr.split(',').map(t => t.trim().toLowerCase()).filter(Boolean))]
+    : [];
+
+  const itemId = currentEditItemId || crypto.randomUUID();
+  let addedAt = new Date().toISOString();
+
+  if (currentEditItemId) {
+    const existing = await db.getItem(currentEditItemId);
+    if (existing) {
+      addedAt = existing.addedAt;
+    }
+  }
+
   await db.putItem({
-    id: crypto.randomUUID(),
+    id: itemId,
     binId: currentBinId,
     description: desc,
     photo: currentPhoto,
-    addedAt: new Date().toISOString(),
+    tags,
+    addedAt,
   });
   currentPhoto = null;
-  markFuseStale();
+  currentEditItemId = null;
   await refreshStats();
   openBin(currentBinId);
 });
 
+// ── Photo Compression ──
+
+function compressImage(dataUrl, maxDim = 800, quality = 0.7) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 // ── Labels ──
 
 async function renderLabels() {
-  const bins = await db.getAllBins();
+  const bins = (await db.getAllBins()).filter(b => !b.archived);
   const grid = $('labels-grid');
 
   if (bins.length === 0) {
@@ -419,12 +623,12 @@ $('generate-go').addEventListener('click', async () => {
       location: '',
       description: '',
       createdAt: new Date().toISOString(),
+      archived: false,
     });
     next++;
   }
   await db.putBins(bins);
   $('generate-controls').style.display = 'none';
-  markFuseStale();
   await refreshStats();
   await renderLabels();
 });
@@ -454,31 +658,88 @@ $('data-export').addEventListener('click', async () => {
 
 $('data-import-btn').addEventListener('click', () => $('data-import-input').click());
 
+let pendingImportData = null;
+
 $('data-import-input').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  if (!confirm('This will replace ALL existing data. Continue?')) {
-    e.target.value = '';
-    return;
-  }
   const reader = new FileReader();
-  reader.onload = async (ev) => {
+  reader.onload = (ev) => {
     try {
       const data = JSON.parse(ev.target.result);
-      if (!Array.isArray(data.bins) || !Array.isArray(data.items)) {
-        throw new Error('Invalid format: expected { bins: [...], items: [...] }');
+      if (!validateImportData(data)) {
+        confirmAction({
+          title: 'Invalid File',
+          message: 'This file does not contain valid BinManager data. Expected bins and/or items arrays.',
+          confirmLabel: 'OK',
+          danger: false,
+        });
+        return;
       }
-      await db.importAll(data);
-      markFuseStale();
-      await refreshStats();
-      showToast(`Imported ${data.bins.length} bins and ${data.items.length} items`, 'success');
+      pendingImportData = data;
+      const binCount = (data.bins || []).length;
+      const itemCount = (data.items || []).length;
+      $('import-summary').textContent = `This file contains ${binCount} bin${binCount === 1 ? '' : 's'} and ${itemCount} item${itemCount === 1 ? '' : 's'}.`;
+      $('import-preview').style.display = 'block';
     } catch (err) {
-      showToast('Import failed: ' + err.message, 'error');
+      confirmAction({
+        title: 'Invalid File',
+        message: 'Could not parse the selected file as JSON.',
+        confirmLabel: 'OK',
+        danger: false,
+      });
     }
-    e.target.value = '';
   };
   reader.readAsText(file);
+  e.target.value = '';
 });
+
+$('import-confirm').addEventListener('click', async () => {
+  if (!pendingImportData) return;
+  const mode = $('import-mode').value;
+
+  if (mode === 'replace') {
+    const confirmed = await confirmAction({
+      title: 'Replace All Data',
+      message: 'This will delete all existing bins and items before importing. This cannot be undone.',
+      confirmLabel: 'Replace',
+    });
+    if (!confirmed) return;
+  }
+
+  await db.importAll(pendingImportData, mode);
+  pendingImportData = null;
+  $('import-preview').style.display = 'none';
+  await refreshStats();
+  showView('search');
+  await refreshSearch();
+});
+
+$('import-cancel').addEventListener('click', () => {
+  pendingImportData = null;
+  $('import-preview').style.display = 'none';
+});
+
+// ── Import Validation ──
+
+function validateImportData(data) {
+  if (!data || typeof data !== 'object') return false;
+  if (!data.bins && !data.items) return false;
+  if (data.bins && !Array.isArray(data.bins)) return false;
+  if (data.items && !Array.isArray(data.items)) return false;
+  if (data.bins) {
+    for (const bin of data.bins) {
+      if (!bin.id || typeof bin.id !== 'string') return false;
+    }
+  }
+  if (data.items) {
+    for (const item of data.items) {
+      if (!item.id || typeof item.id !== 'string') return false;
+      if (!item.binId || typeof item.binId !== 'string') return false;
+    }
+  }
+  return true;
+}
 
 // ── Utilities ──
 
@@ -503,6 +764,12 @@ function formatDate(iso) {
 async function init() {
   try {
     await db.open();
+    // Restore sort preference
+    const savedSort = localStorage.getItem('itemSortOrder');
+    if (savedSort) {
+      itemSortOrder = savedSort;
+      $('item-sort').value = savedSort;
+    }
     await refreshStats();
     await refreshSearch();
   } catch (e) {
