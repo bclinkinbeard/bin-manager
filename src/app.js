@@ -12,6 +12,7 @@ const views = {
   binForm: $('view-bin-form'),
   itemForm: $('view-item-form'),
   labels: $('view-labels'),
+  data: $('view-data'),
 };
 
 const navBtns = document.querySelectorAll('.nav-btn');
@@ -23,6 +24,11 @@ const statItems = $('stat-items');
 let currentBinId = null;
 let currentPhoto = null;
 let fuse = null;
+let fuseEntries = null;
+let fuseStale = true;
+let editingBin = null; // null = creating, object = editing
+let debounceTimer = null;
+let scanHandled = false;
 
 // ── Navigation ──
 
@@ -38,15 +44,22 @@ function showView(name) {
   if (name !== 'scan') {
     scanner.stop();
   }
+
+  // Focus management: move focus to the view's first focusable element
+  const view = views[name];
+  const focusable = view.querySelector('input:not([type=hidden]):not([style*="display:none"]), button, textarea, [tabindex]');
+  if (focusable) {
+    requestAnimationFrame(() => focusable.focus());
+  }
+}
+
+function markFuseStale() {
+  fuseStale = true;
 }
 
 navBtns.forEach((btn) => {
   btn.addEventListener('click', () => {
     const view = btn.dataset.view;
-    if (view === 'export') {
-      doExport();
-      return;
-    }
     if (view === 'scan') {
       showView('scan');
       startScanner();
@@ -57,10 +70,24 @@ navBtns.forEach((btn) => {
       renderLabels();
       return;
     }
+    if (view === 'data') {
+      showView('data');
+      return;
+    }
     showView(view);
     if (view === 'search') refreshSearch();
   });
 });
+
+// ── Toast ──
+
+function showToast(message, type) {
+  const toast = $('toast');
+  toast.textContent = message;
+  toast.className = 'toast visible' + (type ? ' toast-' + type : '');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { toast.className = 'toast'; }, 2500);
+}
 
 // ── Stats ──
 
@@ -74,7 +101,7 @@ async function refreshStats() {
 
 async function buildFuse() {
   const bins = await db.getAllBins();
-  const items = await db.getAllItems();
+  const items = await db.getAllItemsLight();
   const entries = [];
   for (const b of bins) {
     entries.push({
@@ -99,11 +126,16 @@ async function buildFuse() {
     keys: ['id', 'name', 'location', 'description'],
     threshold: 0.35,
   });
+  fuseEntries = entries;
+  fuseStale = false;
   return entries;
 }
 
 async function refreshSearch() {
-  const entries = await buildFuse();
+  let entries = fuseEntries;
+  if (fuseStale || !fuse) {
+    entries = await buildFuse();
+  }
   const q = $('search-input').value.trim();
   const results = q ? fuse.search(q).map((r) => r.item) : entries.filter((e) => e.type === 'bin');
   renderSearchResults(results);
@@ -124,7 +156,7 @@ function renderSearchResults(results) {
   list.innerHTML = results
     .map(
       (r) => `
-    <li class="result-card" data-bin-id="${esc(r.binId)}">
+    <li class="result-card" data-bin-id="${esc(r.binId)}" tabindex="0" role="button">
       <div class="bin-id">${esc(r.binId)}</div>
       <div class="bin-name">${esc(r.name)}</div>
       <div class="bin-meta">${r.type === 'item' ? 'Item match' : esc(r.location || '')}</div>
@@ -133,15 +165,23 @@ function renderSearchResults(results) {
     .join('');
 
   list.querySelectorAll('.result-card').forEach((card) => {
-    card.addEventListener('click', () => openBin(card.dataset.binId));
+    const handler = () => openBin(card.dataset.binId);
+    card.addEventListener('click', handler);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+    });
   });
 }
 
-$('search-input').addEventListener('input', () => refreshSearch());
+$('search-input').addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => refreshSearch(), 150);
+});
 
 // ── Scanner ──
 
 async function startScanner() {
+  scanHandled = false;
   $('scan-status').textContent = 'Starting camera...';
   try {
     await scanner.start('scan-reader', onQrScanned);
@@ -152,8 +192,19 @@ async function startScanner() {
 }
 
 async function onQrScanned(text) {
+  if (scanHandled) return;
+  scanHandled = true;
   await scanner.stop();
   const id = text.trim();
+
+  // Validate scanned ID: must be non-empty and reasonable length
+  if (!id || id.length > 200) {
+    showToast('Invalid QR code content', 'error');
+    showView('search');
+    refreshSearch();
+    return;
+  }
+
   const bin = await db.getBin(id);
   if (bin) {
     openBin(id);
@@ -192,12 +243,12 @@ function renderBinItems(items) {
     .map(
       (item) => `
     <div class="item-card" data-item-id="${esc(item.id)}">
-      ${item.photo && item.photo.startsWith('data:image/') ? `<img class="item-photo" src="${item.photo}" alt="">` : ''}
+      ${item.photo && item.photo.startsWith('data:image/') ? `<img class="item-photo" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}">` : ''}
       <div class="item-info">
         <div class="item-desc">${esc(item.description)}</div>
         <div class="item-date">${formatDate(item.addedAt)}</div>
       </div>
-      <button class="item-delete" data-item-id="${esc(item.id)}">&times;</button>
+      <button class="item-delete" data-item-id="${esc(item.id)}" aria-label="Delete ${esc(item.description)}">&times;</button>
     </div>`
     )
     .join('');
@@ -207,6 +258,7 @@ function renderBinItems(items) {
       e.stopPropagation();
       if (confirm('Delete this item?')) {
         await db.deleteItem(btn.dataset.itemId);
+        markFuseStale();
         await openBin(currentBinId);
         await refreshStats();
       }
@@ -222,9 +274,15 @@ $('bin-back').addEventListener('click', () => {
 $('bin-delete').addEventListener('click', async () => {
   if (confirm('Delete this bin and all its items?')) {
     await db.deleteBin(currentBinId);
+    markFuseStale();
     showView('search');
     refreshSearch();
   }
+});
+
+$('bin-edit').addEventListener('click', async () => {
+  const bin = await db.getBin(currentBinId);
+  if (bin) openBinForm(bin.id, bin);
 });
 
 $('bin-add-item').addEventListener('click', () => {
@@ -236,18 +294,23 @@ $('bin-add-item').addEventListener('click', () => {
 
 // ── Bin form ──
 
-function openBinForm(id) {
+function openBinForm(id, existingBin) {
+  editingBin = existingBin || null;
   $('bin-form-id').value = id;
-  $('bin-form-name').value = '';
-  $('bin-form-location').value = '';
-  $('bin-form-desc').value = '';
-  $('bin-form-title').textContent = 'New Bin';
+  $('bin-form-name').value = existingBin ? existingBin.name || '' : '';
+  $('bin-form-location').value = existingBin ? existingBin.location || '' : '';
+  $('bin-form-desc').value = existingBin ? existingBin.description || '' : '';
+  $('bin-form-title').textContent = existingBin ? 'Edit Bin' : 'New Bin';
   showView('binForm');
 }
 
 $('bin-form-back').addEventListener('click', () => {
-  showView('search');
-  refreshSearch();
+  if (editingBin) {
+    openBin(editingBin.id);
+  } else {
+    showView('search');
+    refreshSearch();
+  }
 });
 
 $('bin-form-save').addEventListener('click', async () => {
@@ -258,15 +321,19 @@ $('bin-form-save').addEventListener('click', async () => {
     name: $('bin-form-name').value.trim(),
     location: $('bin-form-location').value.trim(),
     description: $('bin-form-desc').value.trim(),
-    createdAt: new Date().toISOString(),
+    createdAt: editingBin ? editingBin.createdAt : new Date().toISOString(),
   });
+  markFuseStale();
   await refreshStats();
   openBin(id);
 });
 
 // ── Item form ──
 
-$('item-form-back').addEventListener('click', () => openBin(currentBinId));
+$('item-form-back').addEventListener('click', () => {
+  currentPhoto = null;
+  openBin(currentBinId);
+});
 
 $('item-photo-btn').addEventListener('click', () => $('item-photo-input').click());
 
@@ -293,6 +360,7 @@ $('item-form-save').addEventListener('click', async () => {
     addedAt: new Date().toISOString(),
   });
   currentPhoto = null;
+  markFuseStale();
   await refreshStats();
   openBin(currentBinId);
 });
@@ -319,20 +387,15 @@ async function renderLabels() {
     )
     .join('');
 
-  // Generate QR codes on each canvas
+  // Generate QR codes in parallel
   const canvases = grid.querySelectorAll('canvas[data-qr-id]');
-  for (const canvas of canvases) {
-    const binId = canvas.dataset.qrId;
-    try {
-      await QRCode.toCanvas(canvas, binId, {
-        width: 120,
-        margin: 1,
-        color: { dark: '#000000', light: '#ffffff' },
-      });
-    } catch (e) {
-      console.error('QR generation failed for', binId, e);
-    }
-  }
+  await Promise.all(Array.from(canvases).map((canvas) =>
+    QRCode.toCanvas(canvas, canvas.dataset.qrId, {
+      width: 120,
+      margin: 1,
+      color: { dark: '#000000', light: '#ffffff' },
+    }).catch((e) => console.error('QR generation failed for', canvas.dataset.qrId, e))
+  ));
 }
 
 $('labels-print').addEventListener('click', () => window.print());
@@ -348,10 +411,10 @@ $('generate-cancel').addEventListener('click', () => {
 $('generate-go').addEventListener('click', async () => {
   const count = parseInt($('generate-count').value, 10) || 10;
   let next = await db.getNextBinNumber();
+  const bins = [];
   for (let i = 0; i < count; i++) {
-    const id = `BIN-${String(next).padStart(3, '0')}`;
-    await db.putBin({
-      id,
+    bins.push({
+      id: `BIN-${String(next).padStart(3, '0')}`,
       name: '',
       location: '',
       description: '',
@@ -359,7 +422,9 @@ $('generate-go').addEventListener('click', async () => {
     });
     next++;
   }
+  await db.putBins(bins);
   $('generate-controls').style.display = 'none';
+  markFuseStale();
   await refreshStats();
   await renderLabels();
 });
@@ -369,25 +434,62 @@ $('labels-back').addEventListener('click', () => {
   refreshSearch();
 });
 
-// ── Export ──
+// ── Data (Export / Import) ──
 
-async function doExport() {
-  const data = await db.exportAll();
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `binmanager-export-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+$('data-export').addEventListener('click', async () => {
+  try {
+    const data = await db.exportAll();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `binmanager-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('Data exported successfully', 'success');
+  } catch (e) {
+    showToast('Export failed: ' + e.message, 'error');
+  }
+});
+
+$('data-import-btn').addEventListener('click', () => $('data-import-input').click());
+
+$('data-import-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!confirm('This will replace ALL existing data. Continue?')) {
+    e.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!Array.isArray(data.bins) || !Array.isArray(data.items)) {
+        throw new Error('Invalid format: expected { bins: [...], items: [...] }');
+      }
+      await db.importAll(data);
+      markFuseStale();
+      await refreshStats();
+      showToast(`Imported ${data.bins.length} bins and ${data.items.length} items`, 'success');
+    } catch (err) {
+      showToast('Import failed: ' + err.message, 'error');
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
 
 // ── Utilities ──
 
+const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
 function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
+  return String(s).replace(/[&<>"']/g, (c) => ESC_MAP[c]);
+}
+
+function escAttr(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ESC_MAP[c]);
 }
 
 function formatDate(iso) {
@@ -399,9 +501,17 @@ function formatDate(iso) {
 // ── Init ──
 
 async function init() {
-  await db.open();
-  await refreshStats();
-  await refreshSearch();
+  try {
+    await db.open();
+    await refreshStats();
+    await refreshSearch();
+  } catch (e) {
+    document.body.innerHTML = `<div style="padding:40px;text-align:center;color:#e0e0e0;font-family:monospace;">
+      <h2>Failed to initialize</h2>
+      <p style="margin-top:12px;color:#888;">${esc(e.message)}</p>
+      <p style="margin-top:8px;color:#888;">Try refreshing the page or checking browser storage settings.</p>
+    </div>`;
+  }
 }
 
 init();

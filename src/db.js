@@ -33,6 +33,14 @@ function req(r) {
   });
 }
 
+function txComplete(t) {
+  return new Promise((resolve, reject) => {
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  });
+}
+
 // ── Bins ──
 
 async function getAllBins() {
@@ -50,17 +58,24 @@ async function putBin(bin) {
   return req(tx('bins', 'readwrite').put(bin));
 }
 
+async function putBins(bins) {
+  await open();
+  const t = db.transaction('bins', 'readwrite');
+  const store = t.objectStore('bins');
+  for (const bin of bins) store.put(bin);
+  return txComplete(t);
+}
+
 async function deleteBin(id) {
   await open();
-  // fetch items first, before opening write transactions
   const items = await getItemsByBin(id);
-  await req(tx('bins', 'readwrite').delete(id));
+  const t = db.transaction(['bins', 'items'], 'readwrite');
+  t.objectStore('bins').delete(id);
   if (items.length > 0) {
-    const store = tx('items', 'readwrite');
-    for (const item of items) {
-      store.delete(item.id);
-    }
+    const itemStore = t.objectStore('items');
+    for (const item of items) itemStore.delete(item.id);
   }
+  return txComplete(t);
 }
 
 // ── Items ──
@@ -68,6 +83,26 @@ async function deleteBin(id) {
 async function getAllItems() {
   await open();
   return req(tx('items', 'readonly').getAll());
+}
+
+async function getAllItemsLight() {
+  await open();
+  return new Promise((resolve, reject) => {
+    const results = [];
+    const store = tx('items', 'readonly');
+    const cursor = store.openCursor();
+    cursor.onsuccess = (e) => {
+      const c = e.target.result;
+      if (c) {
+        const { id, binId, description, addedAt } = c.value;
+        results.push({ id, binId, description, addedAt });
+        c.continue();
+      } else {
+        resolve(results);
+      }
+    };
+    cursor.onerror = () => reject(cursor.error);
+  });
 }
 
 async function getItemsByBin(binId) {
@@ -108,7 +143,7 @@ async function getNextBinNumber() {
   return max + 1;
 }
 
-// ── Export ──
+// ── Export / Import ──
 
 async function exportAll() {
   const bins = await getAllBins();
@@ -116,8 +151,20 @@ async function exportAll() {
   return { bins, items, exportedAt: new Date().toISOString() };
 }
 
+async function importAll(data) {
+  await open();
+  const t = db.transaction(['bins', 'items'], 'readwrite');
+  const binStore = t.objectStore('bins');
+  const itemStore = t.objectStore('items');
+  binStore.clear();
+  itemStore.clear();
+  for (const bin of data.bins) binStore.put(bin);
+  for (const item of data.items) itemStore.put(item);
+  return txComplete(t);
+}
+
 export {
-  open, getAllBins, getBin, putBin, deleteBin,
-  getAllItems, getItemsByBin, putItem, deleteItem,
-  getCounts, getNextBinNumber, exportAll
+  open, getAllBins, getBin, putBin, putBins, deleteBin,
+  getAllItems, getAllItemsLight, getItemsByBin, putItem, deleteItem,
+  getCounts, getNextBinNumber, exportAll, importAll
 };
