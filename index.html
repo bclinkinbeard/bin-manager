@@ -2,13 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BinManager</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#121212">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23121212'/><text x='50' y='68' font-size='50' text-anchor='middle' fill='%23ff9800' font-family='monospace'>B</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap">
   <link rel="stylesheet" href="style.css">
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
@@ -17,15 +20,15 @@
 <body>
 
   <!-- Header -->
-  <div class="header">
+  <header class="header">
     <h1>BinManager</h1>
     <div class="stats">
       <span id="stat-bins">0</span> bins &middot; <span id="stat-items">0</span> items
     </div>
-  </div>
+  </header>
 
   <!-- Main content -->
-  <div class="main">
+  <main class="main">
 
     <!-- Search view -->
     <div id="view-search" class="view active">
@@ -50,7 +53,10 @@
       <div class="bin-header">
         <div class="id-row">
           <span class="bin-id-large" id="bin-detail-id"></span>
-          <button class="btn btn-danger" id="bin-delete" style="padding:6px 12px;font-size:11px;">Delete</button>
+          <div class="id-row-actions">
+            <button class="btn btn-secondary" id="bin-edit" style="padding:6px 12px;font-size:11px;">Edit</button>
+            <button class="btn btn-danger" id="bin-delete" style="padding:6px 12px;font-size:11px;">Delete</button>
+          </div>
         </div>
         <div class="bin-name-large" id="bin-detail-name"></div>
         <div class="bin-loc" id="bin-detail-loc"></div>
@@ -66,19 +72,19 @@
       <button class="btn-back" id="bin-form-back">&larr; Back</button>
       <h2 style="font-size:16px;margin-bottom:16px;" id="bin-form-title">New Bin</h2>
       <div class="form-group">
-        <label>Bin ID</label>
+        <label for="bin-form-id">Bin ID</label>
         <input type="text" id="bin-form-id" readonly>
       </div>
       <div class="form-group">
-        <label>Name</label>
+        <label for="bin-form-name">Name</label>
         <input type="text" id="bin-form-name" placeholder="e.g. Resistors 10k">
       </div>
       <div class="form-group">
-        <label>Location</label>
+        <label for="bin-form-location">Location</label>
         <input type="text" id="bin-form-location" placeholder="e.g. Shelf A, Row 3">
       </div>
       <div class="form-group">
-        <label>Description</label>
+        <label for="bin-form-desc">Description</label>
         <textarea id="bin-form-desc" placeholder="Optional notes..."></textarea>
       </div>
       <button class="btn btn-primary btn-block" id="bin-form-save">Save Bin</button>
@@ -89,11 +95,11 @@
       <button class="btn-back" id="item-form-back">&larr; Back</button>
       <h2 style="font-size:16px;margin-bottom:16px;">Add Item</h2>
       <div class="form-group">
-        <label>Description</label>
+        <label for="item-form-desc">Description</label>
         <input type="text" id="item-form-desc" placeholder="What is this item?">
       </div>
       <div class="form-group">
-        <label>Photo</label>
+        <label for="item-photo-input">Photo</label>
         <div class="photo-input-wrap">
           <button class="btn btn-secondary photo-btn" id="item-photo-btn">Take Photo</button>
           <img class="photo-preview" id="item-photo-preview" alt="">
@@ -119,10 +125,24 @@
       <div id="labels-grid" class="label-grid"></div>
     </div>
 
-  </div>
+    <!-- Data (export/import) view -->
+    <div id="view-data" class="view">
+      <h2 style="font-size:16px;margin-bottom:16px;">Data Management</h2>
+      <div class="data-actions">
+        <button class="btn btn-primary btn-block" id="data-export">Export Data (JSON)</button>
+        <div class="data-divider"></div>
+        <button class="btn btn-secondary btn-block" id="data-import-btn">Import Data (JSON)</button>
+        <input type="file" accept=".json,application/json" id="data-import-input" style="display:none;">
+        <p class="data-warning" id="data-import-warning">Import will replace all existing data.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <!-- Bottom nav -->
-  <nav class="bottom-nav">
+  <nav class="bottom-nav" aria-label="Main navigation">
     <button class="nav-btn active" data-view="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       Search
@@ -135,16 +155,16 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="12" y2="15"/></svg>
       Labels
     </button>
-    <button class="nav-btn" data-view="export">
+    <button class="nav-btn" data-view="data">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Export
+      Data
     </button>
   </nav>
 
   <script type="module" src="src/app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./service-worker.js');
+      navigator.serviceWorker.register('./service-worker.js').catch(() => {});
     }
   </script>
 </body>
