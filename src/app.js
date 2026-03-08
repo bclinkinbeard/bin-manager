@@ -952,6 +952,16 @@ function idbReq(request) {
   });
 }
 
+function withTimeout(promise, ms, label) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 function openNamedDb(name, version) {
   return new Promise((resolve, reject) => {
     const req = typeof version === 'number' ? indexedDB.open(name, version) : indexedDB.open(name);
@@ -1007,7 +1017,12 @@ async function listRecoveryDatabases() {
   if (typeof indexedDB.databases !== 'function') {
     return [{ name: 'binManagerDB', version: null, source: 'fallback' }];
   }
-  const dbs = await indexedDB.databases();
+  let dbs = [];
+  try {
+    dbs = await withTimeout(indexedDB.databases(), 2500, 'Database listing');
+  } catch (_) {
+    return [{ name: 'binManagerDB', version: null, source: 'fallback' }];
+  }
   const named = dbs.filter((d) => d && d.name).map((d) => ({ name: d.name, version: d.version || null, source: 'native' }));
   if (named.length === 0) {
     return [{ name: 'binManagerDB', version: null, source: 'fallback' }];
@@ -1016,16 +1031,24 @@ async function listRecoveryDatabases() {
 }
 
 async function inspectRecoveryDatabase(dbInfo) {
-  const connection = await openNamedDb(dbInfo.name, dbInfo.version || undefined);
+  const connection = await withTimeout(
+    openNamedDb(dbInfo.name, dbInfo.version || undefined),
+    2500,
+    `Opening ${dbInfo.name}`
+  );
   try {
     const hasBins = dbHasStore(connection, 'bins');
     const hasItems = dbHasStore(connection, 'items');
     const hasPhotos = dbHasStore(connection, 'photos');
-    const [binCount, itemCount, photoCount] = await Promise.all([
-      getCountFromStore(connection, 'bins'),
-      getCountFromStore(connection, 'items'),
-      getCountFromStore(connection, 'photos'),
-    ]);
+    const [binCount, itemCount, photoCount] = await withTimeout(
+      Promise.all([
+        getCountFromStore(connection, 'bins'),
+        getCountFromStore(connection, 'items'),
+        getCountFromStore(connection, 'photos'),
+      ]),
+      2500,
+      `Inspecting ${dbInfo.name}`
+    );
     return {
       ...dbInfo,
       hasBins,
@@ -1132,8 +1155,11 @@ $('recovery-scan-btn').addEventListener('click', async () => {
 
   try {
     const dbs = await listRecoveryDatabases();
+    setRecoveryStatus(`Scanning ${dbs.length} database${dbs.length === 1 ? '' : 's'}...`);
     const inspected = [];
-    for (const dbInfo of dbs) {
+    for (let i = 0; i < dbs.length; i++) {
+      const dbInfo = dbs[i];
+      setRecoveryStatus(`Scanning ${i + 1}/${dbs.length}: ${dbInfo.name}...`);
       try {
         inspected.push(await inspectRecoveryDatabase(dbInfo));
       } catch (_) {
