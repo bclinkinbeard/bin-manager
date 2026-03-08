@@ -1,5 +1,5 @@
 const DB_NAME = 'binManagerDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let db = null;
 let dataVersion = 0;
@@ -16,6 +16,15 @@ function open() {
       if (!d.objectStoreNames.contains('items')) {
         const items = d.createObjectStore('items', { keyPath: 'id' });
         items.createIndex('binId', 'binId', { unique: false });
+        items.createIndex('tags', 'tags', { unique: false, multiEntry: true });
+      } else {
+        const items = req.transaction.objectStore('items');
+        if (!items.indexNames.contains('binId')) {
+          items.createIndex('binId', 'binId', { unique: false });
+        }
+        if (!items.indexNames.contains('tags')) {
+          items.createIndex('tags', 'tags', { unique: false, multiEntry: true });
+        }
       }
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
@@ -40,6 +49,22 @@ function txComplete(t) {
     t.onerror = () => reject(t.error);
     t.onabort = () => reject(t.error);
   });
+}
+
+function normalizeTags(tags) {
+  if (!Array.isArray(tags)) return [];
+  return [...new Set(
+    tags
+      .map((tag) => String(tag || '').trim().toLowerCase())
+      .filter(Boolean)
+  )];
+}
+
+function normalizeItemForStorage(item) {
+  return {
+    ...item,
+    tags: normalizeTags(item.tags),
+  };
 }
 
 // ── Bins ──
@@ -124,16 +149,18 @@ async function getItemsByBin(binId) {
 async function getItemsByTag(tag) {
   const needle = String(tag || '').trim().toLowerCase();
   if (!needle) return [];
+  await open();
+  const store = tx('items', 'readonly');
+  if (store.indexNames.contains('tags')) {
+    return req(store.index('tags').getAll(needle));
+  }
   const items = await getAllItems();
-  return items.filter((item) =>
-    Array.isArray(item.tags) &&
-    item.tags.some((t) => String(t).trim().toLowerCase() === needle)
-  );
+  return items.filter((item) => normalizeTags(item.tags).includes(needle));
 }
 
 async function putItem(item) {
   await open();
-  const result = await req(tx('items', 'readwrite').put(item));
+  const result = await req(tx('items', 'readwrite').put(normalizeItemForStorage(item)));
   dataVersion++;
   return result;
 }
@@ -185,7 +212,7 @@ async function importAll(data, mode) {
     itemStore.clear();
   }
   for (const bin of (data.bins || [])) binStore.put(bin);
-  for (const item of (data.items || [])) itemStore.put(item);
+  for (const item of (data.items || [])) itemStore.put(normalizeItemForStorage(item));
   dataVersion++;
   return txComplete(t);
 }
