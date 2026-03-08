@@ -532,26 +532,28 @@ $('item-photo-input').addEventListener('change', (e) => {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (ev) => {
-    compressImage(ev.target.result).then(async (compressed) => {
+    const originalDataUrl = ev.target.result;
+
+    compressImage(originalDataUrl).then((compressed) => {
       currentPhoto = compressed;
       $('item-photo-preview').src = currentPhoto;
       $('item-photo-preview').style.display = 'block';
+    });
 
-      // Run OCR if description is empty
-      if (!$('item-form-desc').value.trim()) {
-        const ocrStatus = $('ocr-status');
-        ocrStatus.textContent = 'Reading text from image...';
-        ocrStatus.style.display = 'block';
-        const text = await ocrImage(compressed);
+    // Run OCR on the original full-resolution image
+    if (!$('item-form-desc').value.trim()) {
+      const ocrStatus = $('ocr-status');
+      ocrStatus.textContent = 'Reading text from image...';
+      ocrStatus.style.display = 'block';
+      ocrImage(originalDataUrl).then((text) => {
         ocrStatus.style.display = 'none';
         if (text && !$('item-form-desc').value.trim()) {
-          // Use first line or first 200 chars as description
           const desc = text.split('\n').filter(Boolean)[0] || text;
           $('item-form-desc').value = desc.substring(0, 200);
           showToast('Label detected from photo', 'success');
         }
-      }
-    });
+      });
+    }
   };
   reader.readAsDataURL(file);
 });
@@ -764,28 +766,30 @@ function finishSelection(endPos) {
   renderMultiCropCanvas();
   renderMultiCropItems();
 
-  // Run OCR on the new selection
+  // Run OCR on the new selection (use PNG for better accuracy)
   const idx = multiCropSelections.length - 1;
-  const dataUrl = cropSelectionToDataUrl(multiCropSelections[idx]);
-  ocrImage(dataUrl).then((text) => {
+  const ocrDataUrl = cropSelectionToDataUrl(multiCropSelections[idx], true);
+  ocrImage(ocrDataUrl).then((text) => {
     if (text && multiCropSelections[idx]) {
-      multiCropSelections[idx].ocrText = text.split('\n').filter(Boolean)[0] || text;
+      const ocrText = text.split('\n').filter(Boolean)[0] || text;
+      multiCropSelections[idx].ocrText = ocrText.substring(0, 200);
       // Fill the description input if still empty
       const descInput = $('multi-crop-items').querySelector(`.multi-crop-desc[data-index="${idx}"]`);
       if (descInput && !descInput.value.trim()) {
-        descInput.value = multiCropSelections[idx].ocrText.substring(0, 200);
+        descInput.value = multiCropSelections[idx].ocrText;
       }
     }
   });
 }
 
-function cropSelectionToDataUrl(sel) {
+function cropSelectionToDataUrl(sel, forOcr) {
   const canvas = document.createElement('canvas');
   canvas.width = sel.w;
   canvas.height = sel.h;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(multiCropImage, sel.x, sel.y, sel.w, sel.h, 0, 0, sel.w, sel.h);
-  return canvas.toDataURL('image/jpeg', 0.7);
+  // Use PNG for OCR (no compression artifacts), JPEG for storage thumbnails
+  return forOcr ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.7);
 }
 
 function renderMultiCropItems() {
@@ -794,6 +798,20 @@ function renderMultiCropItems() {
   $('multi-crop-count').textContent = count + ' selection' + (count === 1 ? '' : 's');
   $('multi-crop-save').disabled = count === 0;
 
+  // Save current user-typed values before re-rendering
+  container.querySelectorAll('.multi-crop-desc').forEach((input) => {
+    const idx = parseInt(input.dataset.index, 10);
+    if (multiCropSelections[idx]) {
+      multiCropSelections[idx].userDesc = input.value;
+    }
+  });
+  container.querySelectorAll('.multi-crop-tags').forEach((input) => {
+    const idx = parseInt(input.dataset.index, 10);
+    if (multiCropSelections[idx]) {
+      multiCropSelections[idx].userTags = input.value;
+    }
+  });
+
   if (count === 0) {
     container.innerHTML = '';
     return;
@@ -801,13 +819,15 @@ function renderMultiCropItems() {
 
   container.innerHTML = multiCropSelections.map((sel, i) => {
     const thumb = cropSelectionToDataUrl(sel);
+    const descVal = sel.userDesc || sel.ocrText || '';
+    const tagsVal = sel.userTags || '';
     return `
     <div class="multi-crop-item" data-index="${i}">
       <img class="multi-crop-thumb" src="${escAttr(thumb)}" alt="Selection ${i + 1}">
       <div class="multi-crop-item-fields">
         <span class="multi-crop-num">#${i + 1}</span>
-        <input type="text" class="multi-crop-desc" placeholder="Description" data-index="${i}">
-        <input type="text" class="multi-crop-tags" placeholder="Tags (comma-separated)" data-index="${i}">
+        <input type="text" class="multi-crop-desc" placeholder="Description" data-index="${i}" value="${escAttr(descVal)}">
+        <input type="text" class="multi-crop-tags" placeholder="Tags (comma-separated)" data-index="${i}" value="${escAttr(tagsVal)}">
       </div>
     </div>`;
   }).join('');
