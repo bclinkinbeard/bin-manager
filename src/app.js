@@ -1369,22 +1369,38 @@ $('import-confirm').addEventListener('click', async () => {
     if (!confirmed) return;
   }
 
-  await db.importAll(pendingImportData, mode);
-  setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportAt, new Date().toISOString());
-  if (pendingImportExportedAt) {
-    setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportedFileExportedAt, pendingImportExportedAt);
-  } else {
-    localStorage.removeItem(SYNC_META_KEYS.lastImportedFileExportedAt);
+  const importSnapshot = pendingImportData;
+
+  try {
+    await db.importAll(importSnapshot, mode);
+    setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportAt, new Date().toISOString());
+    if (pendingImportExportedAt) {
+      setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportedFileExportedAt, pendingImportExportedAt);
+    } else {
+      localStorage.removeItem(SYNC_META_KEYS.lastImportedFileExportedAt);
+    }
+    refreshSyncStatus();
+
+    pendingImportData = null;
+    pendingImportExportedAt = null;
+    pendingImportWarnings = [];
+    $('import-preview').style.display = 'none';
+    hideImportWarning();
+
+    // Reset active search filters so imported data is immediately visible.
+    $('search-input').value = '';
+    const importedBins = importSnapshot.bins || [];
+    if (importedBins.length > 0 && importedBins.every((bin) => bin.archived)) {
+      $('search-show-archived').checked = true;
+    }
+
+    await refreshStats();
+    showView('search');
+    await refreshSearch();
+    showToast(`Imported ${importSnapshot.bins.length} bins and ${importSnapshot.items.length} items`, 'success');
+  } catch (err) {
+    showToast('Import failed: ' + (err?.message || 'Unknown error'), 'error');
   }
-  refreshSyncStatus();
-  pendingImportData = null;
-  pendingImportExportedAt = null;
-  pendingImportWarnings = [];
-  $('import-preview').style.display = 'none';
-  hideImportWarning();
-  await refreshStats();
-  showView('search');
-  await refreshSearch();
 });
 
 $('import-cancel').addEventListener('click', () => {
