@@ -11,6 +11,7 @@ const views = {
   bin: $('view-bin'),
   binForm: $('view-bin-form'),
   itemForm: $('view-item-form'),
+  multiCrop: $('view-multi-crop'),
   labels: $('view-labels'),
   data: $('view-data'),
 };
@@ -537,6 +538,270 @@ $('item-form-save').addEventListener('click', async () => {
   });
   currentPhoto = null;
   currentEditItemId = null;
+  await refreshStats();
+  openBin(currentBinId);
+});
+
+// ── Multi-Item Photo Crop ──
+
+let multiCropImage = null;    // HTMLImageElement of the loaded photo
+let multiCropSelections = [];  // [{x, y, w, h}] in image coordinates
+let multiCropDrawing = false;
+let multiCropStart = null;     // {x, y} canvas coordinates
+let multiCropScale = 1;
+
+$('bin-add-multi').addEventListener('click', () => {
+  // Create a temporary file input to pick/take photo
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.capture = 'environment';
+  input.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        multiCropImage = img;
+        multiCropSelections = [];
+        openMultiCropView();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  input.click();
+});
+
+function openMultiCropView() {
+  showView('multiCrop');
+  $('multi-crop-hint').textContent = 'Draw rectangles around each item';
+  renderMultiCropCanvas();
+  renderMultiCropItems();
+}
+
+function renderMultiCropCanvas() {
+  const canvas = $('multi-crop-canvas');
+  const wrap = $('multi-crop-canvas-wrap');
+  const wrapWidth = wrap.clientWidth || 400;
+
+  // Scale image to fit container
+  const img = multiCropImage;
+  multiCropScale = Math.min(wrapWidth / img.width, 1);
+  const dispW = Math.round(img.width * multiCropScale);
+  const dispH = Math.round(img.height * multiCropScale);
+
+  canvas.width = dispW;
+  canvas.height = dispH;
+  canvas.style.width = dispW + 'px';
+  canvas.style.height = dispH + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, dispW, dispH);
+
+  // Draw existing selections
+  multiCropSelections.forEach((sel, i) => {
+    const sx = sel.x * multiCropScale;
+    const sy = sel.y * multiCropScale;
+    const sw = sel.w * multiCropScale;
+    const sh = sel.h * multiCropScale;
+
+    ctx.strokeStyle = '#ff9800';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx, sy, sw, sh);
+
+    // Semi-transparent fill
+    ctx.fillStyle = 'rgba(255, 152, 0, 0.15)';
+    ctx.fillRect(sx, sy, sw, sh);
+
+    // Number label
+    ctx.fillStyle = '#ff9800';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText(String(i + 1), sx + 4, sy + 18);
+  });
+}
+
+function getCanvasPointer(e) {
+  const canvas = $('multi-crop-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const touch = e.touches ? e.touches[0] : e;
+  return {
+    x: touch.clientX - rect.left,
+    y: touch.clientY - rect.top,
+  };
+}
+
+// Canvas interaction - mouse events
+$('multi-crop-canvas').addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  multiCropDrawing = true;
+  multiCropStart = getCanvasPointer(e);
+});
+
+$('multi-crop-canvas').addEventListener('mousemove', (e) => {
+  if (!multiCropDrawing || !multiCropStart) return;
+  e.preventDefault();
+  const pos = getCanvasPointer(e);
+  renderMultiCropCanvas();
+  // Draw in-progress rectangle
+  const ctx = $('multi-crop-canvas').getContext('2d');
+  ctx.strokeStyle = '#ff9800';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 3]);
+  ctx.strokeRect(multiCropStart.x, multiCropStart.y, pos.x - multiCropStart.x, pos.y - multiCropStart.y);
+  ctx.setLineDash([]);
+});
+
+$('multi-crop-canvas').addEventListener('mouseup', (e) => {
+  if (!multiCropDrawing || !multiCropStart) return;
+  e.preventDefault();
+  finishSelection(getCanvasPointer(e));
+});
+
+// Canvas interaction - touch events
+$('multi-crop-canvas').addEventListener('touchstart', (e) => {
+  if (e.touches.length !== 1) return;
+  e.preventDefault();
+  multiCropDrawing = true;
+  multiCropStart = getCanvasPointer(e);
+}, { passive: false });
+
+$('multi-crop-canvas').addEventListener('touchmove', (e) => {
+  if (!multiCropDrawing || !multiCropStart) return;
+  e.preventDefault();
+  const pos = getCanvasPointer(e);
+  renderMultiCropCanvas();
+  const ctx = $('multi-crop-canvas').getContext('2d');
+  ctx.strokeStyle = '#ff9800';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 3]);
+  ctx.strokeRect(multiCropStart.x, multiCropStart.y, pos.x - multiCropStart.x, pos.y - multiCropStart.y);
+  ctx.setLineDash([]);
+}, { passive: false });
+
+$('multi-crop-canvas').addEventListener('touchend', (e) => {
+  if (!multiCropDrawing || !multiCropStart) return;
+  e.preventDefault();
+  const touch = e.changedTouches[0];
+  const canvas = $('multi-crop-canvas');
+  const rect = canvas.getBoundingClientRect();
+  finishSelection({ x: touch.clientX - rect.left, y: touch.clientY - rect.top });
+}, { passive: false });
+
+function finishSelection(endPos) {
+  multiCropDrawing = false;
+  if (!multiCropStart) return;
+
+  // Convert canvas coords to image coords
+  let x = Math.min(multiCropStart.x, endPos.x) / multiCropScale;
+  let y = Math.min(multiCropStart.y, endPos.y) / multiCropScale;
+  let w = Math.abs(endPos.x - multiCropStart.x) / multiCropScale;
+  let h = Math.abs(endPos.y - multiCropStart.y) / multiCropScale;
+
+  // Clamp to image bounds
+  x = Math.max(0, x);
+  y = Math.max(0, y);
+  w = Math.min(w, multiCropImage.width - x);
+  h = Math.min(h, multiCropImage.height - y);
+
+  multiCropStart = null;
+
+  // Ignore tiny selections (likely accidental taps)
+  if (w < 20 || h < 20) {
+    renderMultiCropCanvas();
+    return;
+  }
+
+  multiCropSelections.push({ x, y, w, h });
+  renderMultiCropCanvas();
+  renderMultiCropItems();
+}
+
+function cropSelectionToDataUrl(sel) {
+  const canvas = document.createElement('canvas');
+  canvas.width = sel.w;
+  canvas.height = sel.h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(multiCropImage, sel.x, sel.y, sel.w, sel.h, 0, 0, sel.w, sel.h);
+  return canvas.toDataURL('image/jpeg', 0.7);
+}
+
+function renderMultiCropItems() {
+  const container = $('multi-crop-items');
+  const count = multiCropSelections.length;
+  $('multi-crop-count').textContent = count + ' selection' + (count === 1 ? '' : 's');
+  $('multi-crop-save').disabled = count === 0;
+
+  if (count === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = multiCropSelections.map((sel, i) => {
+    const thumb = cropSelectionToDataUrl(sel);
+    return `
+    <div class="multi-crop-item" data-index="${i}">
+      <img class="multi-crop-thumb" src="${escAttr(thumb)}" alt="Selection ${i + 1}">
+      <div class="multi-crop-item-fields">
+        <span class="multi-crop-num">#${i + 1}</span>
+        <input type="text" class="multi-crop-desc" placeholder="Description" data-index="${i}">
+        <input type="text" class="multi-crop-tags" placeholder="Tags (comma-separated)" data-index="${i}">
+      </div>
+    </div>`;
+  }).join('');
+}
+
+$('multi-crop-undo').addEventListener('click', () => {
+  if (multiCropSelections.length === 0) return;
+  multiCropSelections.pop();
+  renderMultiCropCanvas();
+  renderMultiCropItems();
+});
+
+$('multi-crop-clear').addEventListener('click', () => {
+  multiCropSelections = [];
+  renderMultiCropCanvas();
+  renderMultiCropItems();
+});
+
+$('multi-crop-back').addEventListener('click', () => {
+  multiCropImage = null;
+  multiCropSelections = [];
+  openBin(currentBinId);
+});
+
+$('multi-crop-save').addEventListener('click', async () => {
+  if (multiCropSelections.length === 0) return;
+
+  const descs = $('multi-crop-items').querySelectorAll('.multi-crop-desc');
+  const tagsInputs = $('multi-crop-items').querySelectorAll('.multi-crop-tags');
+  let savedCount = 0;
+
+  for (let i = 0; i < multiCropSelections.length; i++) {
+    const sel = multiCropSelections[i];
+    const desc = descs[i].value.trim() || `Item ${i + 1}`;
+    const tagsStr = tagsInputs[i].value.trim();
+    const tags = tagsStr
+      ? [...new Set(tagsStr.split(',').map(t => t.trim().toLowerCase()).filter(Boolean))]
+      : [];
+
+    const photo = await compressImage(cropSelectionToDataUrl(sel));
+
+    await db.putItem({
+      id: crypto.randomUUID(),
+      binId: currentBinId,
+      description: desc,
+      photo,
+      tags,
+      addedAt: new Date().toISOString(),
+    });
+    savedCount++;
+  }
+
+  showToast(`Saved ${savedCount} item${savedCount === 1 ? '' : 's'}`, 'success');
+  multiCropImage = null;
+  multiCropSelections = [];
   await refreshStats();
   openBin(currentBinId);
 });
