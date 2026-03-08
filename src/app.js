@@ -41,6 +41,7 @@ const statItems = $('stat-items');
 
 let currentBinId = null;
 let currentPhoto = null;
+let currentPhotoId = null;
 let currentEditItemId = null;
 let editingBin = null; // null = creating, object = editing
 let scanHandled = false;
@@ -51,7 +52,6 @@ let currentBinItems = [];
 let currentTagOriginBinId = null;
 let pendingImportData = null;
 let pendingImportExportedAt = null;
-let pendingImportSummary = null;
 let pendingImportWarnings = [];
 
 const SYNC_META_KEYS = {
@@ -305,6 +305,10 @@ const itemFormView = createItemFormView({
   getCurrentPhoto: () => currentPhoto,
   setCurrentPhoto: (value) => {
     currentPhoto = value;
+  },
+  getCurrentPhotoId: () => currentPhotoId,
+  setCurrentPhotoId: (value) => {
+    currentPhotoId = value;
   },
   getCurrentEditItemId: () => currentEditItemId,
   setCurrentEditItemId: (value) => {
@@ -966,7 +970,6 @@ $('data-import-input').addEventListener('change', (e) => {
   if (!file) return;
   pendingImportData = null;
   pendingImportExportedAt = null;
-  pendingImportSummary = null;
   pendingImportWarnings = [];
   hideImportWarning();
   const reader = new FileReader();
@@ -977,7 +980,6 @@ $('data-import-input').addEventListener('change', (e) => {
       if (!prepared.ok) {
         pendingImportData = null;
         pendingImportExportedAt = null;
-        pendingImportSummary = null;
         pendingImportWarnings = [];
         $('import-preview').style.display = 'none';
         confirmAction({
@@ -990,7 +992,6 @@ $('data-import-input').addEventListener('change', (e) => {
       }
       pendingImportData = prepared.data;
       pendingImportExportedAt = parseValidIso(prepared.data.exportedAt);
-      pendingImportSummary = prepared.summary;
       pendingImportWarnings = prepared.warnings || [];
       const s = prepared.summary;
       const summaryParts = [
@@ -1010,7 +1011,6 @@ $('data-import-input').addEventListener('change', (e) => {
     } catch (err) {
       pendingImportData = null;
       pendingImportExportedAt = null;
-      pendingImportSummary = null;
       pendingImportWarnings = [];
       hideImportWarning();
       $('import-preview').style.display = 'none';
@@ -1049,7 +1049,6 @@ $('import-confirm').addEventListener('click', async () => {
   refreshSyncStatus();
   pendingImportData = null;
   pendingImportExportedAt = null;
-  pendingImportSummary = null;
   pendingImportWarnings = [];
   $('import-preview').style.display = 'none';
   hideImportWarning();
@@ -1061,7 +1060,6 @@ $('import-confirm').addEventListener('click', async () => {
 $('import-cancel').addEventListener('click', () => {
   pendingImportData = null;
   pendingImportExportedAt = null;
-  pendingImportSummary = null;
   pendingImportWarnings = [];
   $('import-preview').style.display = 'none';
   hideImportWarning();

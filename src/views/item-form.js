@@ -14,6 +14,8 @@ function createItemFormView({
   setCurrentBinId,
   getCurrentPhoto,
   setCurrentPhoto,
+  getCurrentPhotoId,
+  setCurrentPhotoId,
   getCurrentEditItemId,
   setCurrentEditItemId,
 }) {
@@ -32,6 +34,7 @@ function createItemFormView({
   async function openAddItemForm(preselectedBinId, options = {}) {
     const { syncUrl = true } = options;
     setCurrentPhoto(null);
+    setCurrentPhotoId(null);
     setCurrentEditItemId(null);
     $('item-form-desc').value = '';
     $('item-form-tags').value = '';
@@ -47,6 +50,7 @@ function createItemFormView({
     if (!item) return;
     setCurrentEditItemId(itemId);
     setCurrentPhoto(item.photo || null);
+    setCurrentPhotoId(item.photoId || null);
     $('item-form-desc').value = item.description || '';
     $('item-form-tags').value = (item.tags || []).join(', ');
     if (item.photo && item.photo.startsWith('data:image/')) {
@@ -63,6 +67,7 @@ function createItemFormView({
   function wireItemFormEvents() {
     $('item-form-back').addEventListener('click', () => {
       setCurrentPhoto(null);
+      setCurrentPhotoId(null);
       if (getCurrentBinId()) {
         openBin(getCurrentBinId());
       } else {
@@ -80,6 +85,7 @@ function createItemFormView({
       reader.onload = (ev) => {
         compressImage(ev.target.result).then((compressed) => {
           setCurrentPhoto(compressed);
+          setCurrentPhotoId(null);
           $('item-photo-preview').src = getCurrentPhoto();
           $('item-photo-preview').style.display = 'block';
         });
@@ -109,10 +115,12 @@ function createItemFormView({
         binId,
         description: desc,
         photo: getCurrentPhoto(),
+        photoId: getCurrentPhotoId(),
         tags,
         addedAt,
       });
       setCurrentPhoto(null);
+      setCurrentPhotoId(null);
       setCurrentEditItemId(null);
       await refreshStats();
       openBin(binId);
