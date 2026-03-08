@@ -50,3 +50,21 @@ test('prepareImportData migrates missing version payloads', () => {
   assert.deepEqual(result.data.items[0].tags, ['a']);
   assert.ok(result.warnings.length > 0);
 });
+
+test('prepareImportData normalizes archived boolean-like values', () => {
+  const result = prepareImportData({
+    bins: [
+      { id: 'BIN-001', archived: 'false' },
+      { id: 'BIN-002', archived: 'true' },
+      { id: 'BIN-003', archived: 0 },
+      { id: 'BIN-004', archived: 1 },
+    ],
+    items: [],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.bins[0].archived, false);
+  assert.equal(result.data.bins[1].archived, true);
+  assert.equal(result.data.bins[2].archived, false);
+  assert.equal(result.data.bins[3].archived, true);
+});

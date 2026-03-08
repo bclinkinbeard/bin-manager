@@ -19,6 +19,21 @@ function normalizeTags(tags) {
   )];
 }
 
+function normalizeBoolean(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+    return fallback;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+    if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === '') return false;
+  }
+  return fallback;
+}
+
 function normalizeBin(bin, nowIso) {
   return {
     id: String(bin.id).trim(),
@@ -26,7 +41,7 @@ function normalizeBin(bin, nowIso) {
     location: typeof bin.location === 'string' ? bin.location.trim() : '',
     description: typeof bin.description === 'string' ? bin.description.trim() : '',
     createdAt: normalizeIso(bin.createdAt, nowIso),
-    archived: Boolean(bin.archived),
+    archived: normalizeBoolean(bin.archived, false),
   };
 }
 
