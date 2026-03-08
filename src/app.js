@@ -532,10 +532,25 @@ $('item-photo-input').addEventListener('change', (e) => {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (ev) => {
-    compressImage(ev.target.result).then((compressed) => {
+    compressImage(ev.target.result).then(async (compressed) => {
       currentPhoto = compressed;
       $('item-photo-preview').src = currentPhoto;
       $('item-photo-preview').style.display = 'block';
+
+      // Run OCR if description is empty
+      if (!$('item-form-desc').value.trim()) {
+        const ocrStatus = $('ocr-status');
+        ocrStatus.textContent = 'Reading text from image...';
+        ocrStatus.style.display = 'block';
+        const text = await ocrImage(compressed);
+        ocrStatus.style.display = 'none';
+        if (text && !$('item-form-desc').value.trim()) {
+          // Use first line or first 200 chars as description
+          const desc = text.split('\n').filter(Boolean)[0] || text;
+          $('item-form-desc').value = desc.substring(0, 200);
+          showToast('Label detected from photo', 'success');
+        }
+      }
     });
   };
   reader.readAsDataURL(file);
@@ -745,9 +760,23 @@ function finishSelection(endPos) {
     return;
   }
 
-  multiCropSelections.push({ x, y, w, h });
+  multiCropSelections.push({ x, y, w, h, ocrText: '' });
   renderMultiCropCanvas();
   renderMultiCropItems();
+
+  // Run OCR on the new selection
+  const idx = multiCropSelections.length - 1;
+  const dataUrl = cropSelectionToDataUrl(multiCropSelections[idx]);
+  ocrImage(dataUrl).then((text) => {
+    if (text && multiCropSelections[idx]) {
+      multiCropSelections[idx].ocrText = text.split('\n').filter(Boolean)[0] || text;
+      // Fill the description input if still empty
+      const descInput = $('multi-crop-items').querySelector(`.multi-crop-desc[data-index="${idx}"]`);
+      if (descInput && !descInput.value.trim()) {
+        descInput.value = multiCropSelections[idx].ocrText.substring(0, 200);
+      }
+    }
+  });
 }
 
 function cropSelectionToDataUrl(sel) {
@@ -837,6 +866,18 @@ $('multi-crop-save').addEventListener('click', async () => {
   await refreshStats();
   openBin(currentBinId);
 });
+
+// ── OCR ──
+
+async function ocrImage(imageSource) {
+  try {
+    const { data: { text } } = await Tesseract.recognize(imageSource, 'eng');
+    return text.trim();
+  } catch (e) {
+    console.error('OCR failed:', e);
+    return '';
+  }
+}
 
 // ── Photo Compression ──
 
