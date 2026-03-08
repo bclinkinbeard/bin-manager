@@ -19,8 +19,8 @@ import {
   getLatestLocalSyncMs,
 } from './lib/sync-meta.js';
 
-const APP_VERSION = '2026.03.08-v23';
-const APP_CACHE_VERSION = 'binmanager-v23';
+const APP_VERSION = '2026.03.08-v24';
+const APP_CACHE_VERSION = 'binmanager-v24';
 
 // ── DOM refs ──
 
@@ -1273,12 +1273,13 @@ $('recovery-results').addEventListener('click', async (e) => {
 
       setRecoveryStatus(`Restoring data from ${dbName}...`);
       const payload = await extractRecoveryPayload(dbName);
-      await db.importAll(payload, 'replace');
+      const restoreResult = await db.importAll(payload, 'replace');
       setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportAt, new Date().toISOString());
       setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportedFileExportedAt, payload.exportedAt);
       refreshSyncStatus();
       await refreshStats();
-      showToast(`Restored ${payload.bins.length} bins and ${payload.items.length} items`, 'success');
+      const restoreMsg = `Restored ${payload.bins.length} bins and ${payload.items.length} items`;
+      showToast(restoreResult && restoreResult.photosFailed ? `${restoreMsg} (some photos could not be saved)` : restoreMsg, 'success');
       setRecoveryStatus(`Restore complete from ${dbName}.`);
       showView('search');
       await refreshSearch();
@@ -1383,7 +1384,7 @@ $('import-confirm').addEventListener('click', async () => {
   const importSnapshot = pendingImportData;
 
   try {
-    await db.importAll(importSnapshot, mode);
+    const result = await db.importAll(importSnapshot, mode);
     setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportAt, new Date().toISOString());
     if (pendingImportExportedAt) {
       setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportedFileExportedAt, pendingImportExportedAt);
@@ -1408,7 +1409,12 @@ $('import-confirm').addEventListener('click', async () => {
     await refreshStats();
     showView('search');
     await refreshSearch();
-    showToast(`Imported ${importSnapshot.bins.length} bins and ${importSnapshot.items.length} items`, 'success');
+    const msg = `Imported ${importSnapshot.bins.length} bins and ${importSnapshot.items.length} items`;
+    if (result && result.photosFailed) {
+      showToast(`${msg} (some photos could not be saved)`, 'success');
+    } else {
+      showToast(msg, 'success');
+    }
   } catch (err) {
     showToast('Import failed: ' + (err?.message || 'Unknown error'), 'error');
   }

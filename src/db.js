@@ -370,8 +370,13 @@ async function importAll(data, mode) {
     }
   }
 
-  const stores = hasPhotosStore() ? ['bins', 'items', 'photos'] : ['bins', 'items'];
-  const t = db.transaction(stores, 'readwrite');
+  // Store bins and items first in their own transaction so that a photo
+  // storage failure (quota, blob serialisation, etc.) cannot roll back the
+  // entire import and leave the user with zero data.
+  const coreStores = hasPhotosStore() && mode === 'replace'
+    ? ['bins', 'items', 'photos']
+    : ['bins', 'items'];
+  const t = db.transaction(coreStores, 'readwrite');
   const binStore = t.objectStore('bins');
   const itemStore = t.objectStore('items');
 
@@ -385,13 +390,27 @@ async function importAll(data, mode) {
 
   for (const bin of data.bins || []) binStore.put(bin);
   for (const item of preparedItems) itemStore.put(item);
-  if (hasPhotosStore()) {
-    const photoStore = t.objectStore('photos');
-    for (const photo of photoRecords) photoStore.put(photo);
-  }
 
   await txComplete(t);
   dataVersion++;
+
+  // Store photo blobs in a separate transaction so failures here don't
+  // roll back the bins/items saved above.
+  let photosFailed = false;
+  if (hasPhotosStore() && photoRecords.length > 0) {
+    try {
+      const pt = db.transaction('photos', 'readwrite');
+      const photoStore = pt.objectStore('photos');
+      for (const photo of photoRecords) photoStore.put(photo);
+      await txComplete(pt);
+    } catch {
+      // Photos failed to persist — items still reference their photoIds so
+      // the photos will simply be missing until the next import/sync.
+      photosFailed = true;
+    }
+  }
+
+  return { photosFailed };
 }
 
 // ── Data version (for Fuse cache invalidation) ──
