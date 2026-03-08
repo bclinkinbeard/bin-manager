@@ -115,6 +115,12 @@ function showToast(message, type) {
   toast._timer = setTimeout(() => { toast.className = 'toast'; }, 2500);
 }
 
+function parseTags(tagsStr) {
+  return tagsStr
+    ? [...new Set(tagsStr.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean))]
+    : [];
+}
+
 // ── Stats ──
 
 async function refreshStats() {
@@ -320,7 +326,7 @@ function renderBinItems() {
     .map(
       (item) => `
     <div class="item-card" data-item-id="${esc(item.id)}">
-      ${item.photo && item.photo.startsWith('data:image/') ? `<img class="item-photo" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}">` : ''}
+      ${item.photo && item.photo.startsWith('data:image/') ? `<img class="item-photo item-photo-preview" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}" role="button" tabindex="0" title="Tap to enlarge">` : ''}
       <div class="item-info">
         <div class="item-desc">${esc(item.description)}</div>
         ${(item.tags && item.tags.length) ? `<div class="item-tags">${item.tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join('')}</div>` : ''}
@@ -354,6 +360,20 @@ function renderBinItems() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       openEditItemForm(btn.dataset.itemId);
+    });
+  });
+
+  container.querySelectorAll('.item-photo-preview').forEach((img) => {
+    const open = () => openImagePreview(img.src, img.alt || 'Item photo');
+    img.addEventListener('click', (e) => {
+      e.stopPropagation();
+      open();
+    });
+    img.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      e.stopPropagation();
+      open();
     });
   });
 
@@ -545,10 +565,7 @@ $('item-form-save').addEventListener('click', async () => {
   const desc = $('item-form-desc').value.trim();
   if (!desc) return;
 
-  const tagsStr = $('item-form-tags').value.trim();
-  const tags = tagsStr
-    ? [...new Set(tagsStr.split(',').map(t => t.trim().toLowerCase()).filter(Boolean))]
-    : [];
+  const tags = parseTags($('item-form-tags').value.trim());
 
   const itemId = currentEditItemId || crypto.randomUUID();
   let addedAt = new Date().toISOString();
@@ -609,6 +626,7 @@ $('bin-add-multi').addEventListener('click', () => {
 function openMultiCropView() {
   showView('multiCrop');
   $('multi-crop-hint').textContent = 'Draw rectangles around each item';
+  $('multi-crop-shared-tags').value = '';
   renderMultiCropCanvas();
   renderMultiCropItems();
 }
@@ -774,7 +792,7 @@ function renderMultiCropItems() {
     const thumb = cropSelectionToDataUrl(sel);
     return `
     <div class="multi-crop-item" data-index="${i}">
-      <img class="multi-crop-thumb" src="${escAttr(thumb)}" alt="Selection ${i + 1}">
+      <img class="multi-crop-thumb" src="${escAttr(thumb)}" alt="Selection ${i + 1}" role="button" tabindex="0" title="Tap to enlarge">
       <div class="multi-crop-item-fields">
         <span class="multi-crop-num">#${i + 1}</span>
         <input type="text" class="multi-crop-desc" placeholder="Description" data-index="${i}">
@@ -782,6 +800,16 @@ function renderMultiCropItems() {
       </div>
     </div>`;
   }).join('');
+
+  container.querySelectorAll('.multi-crop-thumb').forEach((img) => {
+    const open = () => openImagePreview(img.src, img.alt || 'Cropped item');
+    img.addEventListener('click', open);
+    img.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      open();
+    });
+  });
 }
 
 $('multi-crop-undo').addEventListener('click', () => {
@@ -793,6 +821,7 @@ $('multi-crop-undo').addEventListener('click', () => {
 
 $('multi-crop-clear').addEventListener('click', () => {
   multiCropSelections = [];
+  $('multi-crop-shared-tags').value = '';
   renderMultiCropCanvas();
   renderMultiCropItems();
 });
@@ -800,6 +829,7 @@ $('multi-crop-clear').addEventListener('click', () => {
 $('multi-crop-back').addEventListener('click', () => {
   multiCropImage = null;
   multiCropSelections = [];
+  $('multi-crop-shared-tags').value = '';
   openBin(currentBinId);
 });
 
@@ -808,15 +838,13 @@ $('multi-crop-save').addEventListener('click', async () => {
 
   const descs = $('multi-crop-items').querySelectorAll('.multi-crop-desc');
   const tagsInputs = $('multi-crop-items').querySelectorAll('.multi-crop-tags');
+  const sharedTags = parseTags($('multi-crop-shared-tags').value.trim());
   let savedCount = 0;
 
   for (let i = 0; i < multiCropSelections.length; i++) {
     const sel = multiCropSelections[i];
     const desc = descs[i].value.trim() || `Item ${i + 1}`;
-    const tagsStr = tagsInputs[i].value.trim();
-    const tags = tagsStr
-      ? [...new Set(tagsStr.split(',').map(t => t.trim().toLowerCase()).filter(Boolean))]
-      : [];
+    const tags = [...new Set([...sharedTags, ...parseTags(tagsInputs[i].value.trim())])];
 
     const photo = await compressImage(cropSelectionToDataUrl(sel));
 
@@ -834,6 +862,7 @@ $('multi-crop-save').addEventListener('click', async () => {
   showToast(`Saved ${savedCount} item${savedCount === 1 ? '' : 's'}`, 'success');
   multiCropImage = null;
   multiCropSelections = [];
+  $('multi-crop-shared-tags').value = '';
   await refreshStats();
   openBin(currentBinId);
 });
@@ -1055,6 +1084,32 @@ function formatDate(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+function openImagePreview(src, altText) {
+  if (!src) return;
+  const overlay = $('image-modal-overlay');
+  const img = $('image-modal-img');
+  img.src = src;
+  img.alt = altText || 'Image preview';
+  overlay.classList.add('active');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeImagePreview() {
+  const overlay = $('image-modal-overlay');
+  const img = $('image-modal-img');
+  overlay.classList.remove('active');
+  overlay.setAttribute('aria-hidden', 'true');
+  img.src = '';
+}
+
+$('image-modal-close').addEventListener('click', closeImagePreview);
+$('image-modal-overlay').addEventListener('click', (e) => {
+  if (e.target === $('image-modal-overlay')) closeImagePreview();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeImagePreview();
+});
 
 // ── Init ──
 

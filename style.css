@@ -301,6 +301,7 @@ body {
   object-fit: cover;
   flex-shrink: 0;
   background: var(--surface2);
+  cursor: zoom-in;
 }
 
 .item-card .item-info { flex: 1; min-width: 0; }
@@ -714,6 +715,10 @@ body {
   margin-left: auto;
 }
 
+.multi-crop-shared-tags-wrap {
+  margin-bottom: 10px;
+}
+
 .multi-crop-item {
   display: flex;
   gap: 10px;
@@ -732,6 +737,7 @@ body {
   object-fit: cover;
   flex-shrink: 0;
   background: var(--surface2);
+  cursor: zoom-in;
 }
 
 .multi-crop-item-fields {
@@ -773,10 +779,51 @@ body {
   color: var(--text-dim);
 }
 
+/* ── Image modal ── */
+
+.image-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(0, 0, 0, 0.88);
+  align-items: center;
+  justify-content: center;
+  padding: 44px 12px 12px;
+}
+
+.image-modal-overlay.active {
+  display: flex;
+}
+
+.image-modal-img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--surface2);
+  background: var(--surface);
+  object-fit: contain;
+}
+
+.image-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--surface2);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 /* ── Print styles ── */
 
 @media print {
-  .header, .bottom-nav, .print-controls, .btn-back, .modal-overlay { display: none !important; }
+  .header, .bottom-nav, .print-controls, .btn-back, .modal-overlay, .image-modal-overlay { display: none !important; }
   body { background: #fff; max-width: none; color: #000; }
   .main { padding: 0; overflow: visible; }
   .view { display: none !important; }
