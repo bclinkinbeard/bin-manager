@@ -1,6 +1,6 @@
 import * as db from './db.js';
 import * as scanner from './scanner.js';
-import scribe from '../node_modules/scribe.js-ocr/scribe.js';
+import scribe from '../vendor/scribe/scribe.js';
 
 // ── DOM refs ──
 
