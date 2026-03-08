@@ -369,7 +369,7 @@ body {
   border: none;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 24px;
+  font-size: 36px;
   min-width: 44px;
   min-height: 44px;
   display: inline-flex;
@@ -388,7 +388,7 @@ body {
   border: none;
   color: var(--danger);
   cursor: pointer;
-  font-size: 26px;
+  font-size: 40px;
   min-width: 44px;
   min-height: 44px;
   display: inline-flex;
