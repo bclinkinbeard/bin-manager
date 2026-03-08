@@ -471,6 +471,9 @@ async function openAddItemForm(preselectedBinId) {
   $('item-form-desc').value = '';
   $('item-form-tags').value = '';
   $('item-photo-preview').style.display = 'none';
+  $('item-ocr-btn').style.display = 'none';
+  $('ocr-status').style.display = 'none';
+  $('ocr-results').style.display = 'none';
   $('item-form-title').textContent = 'Add Item';
   await populateBinSelector(preselectedBinId);
   showView('itemForm');
@@ -507,9 +510,13 @@ async function openEditItemForm(itemId) {
   if (item.photo && item.photo.startsWith('data:image/')) {
     $('item-photo-preview').src = item.photo;
     $('item-photo-preview').style.display = 'block';
+    $('item-ocr-btn').style.display = '';
   } else {
     $('item-photo-preview').style.display = 'none';
+    $('item-ocr-btn').style.display = 'none';
   }
+  $('ocr-status').style.display = 'none';
+  $('ocr-results').style.display = 'none';
   $('item-form-title').textContent = 'Edit Item';
   await populateBinSelector(item.binId);
   showView('itemForm');
@@ -538,24 +545,63 @@ $('item-photo-input').addEventListener('change', (e) => {
       currentPhoto = compressed;
       $('item-photo-preview').src = currentPhoto;
       $('item-photo-preview').style.display = 'block';
+      $('item-ocr-btn').style.display = '';
     });
 
-    // Run OCR on the original full-resolution image
-    if (!$('item-form-desc').value.trim()) {
-      const ocrStatus = $('ocr-status');
-      ocrStatus.textContent = 'Reading text from image...';
-      ocrStatus.style.display = 'block';
-      ocrImage(originalDataUrl).then((text) => {
-        ocrStatus.style.display = 'none';
-        if (text && !$('item-form-desc').value.trim()) {
-          const desc = text.split('\n').filter(Boolean)[0] || text;
-          $('item-form-desc').value = desc.substring(0, 200);
-          showToast('Label detected from photo', 'success');
-        }
-      });
-    }
+    // Auto-run OCR on the original full-resolution image
+    runItemOcr(originalDataUrl, !$('item-form-desc').value.trim());
   };
   reader.readAsDataURL(file);
+});
+
+async function runItemOcr(imageSource, autoFill) {
+  const ocrStatus = $('ocr-status');
+  const ocrResults = $('ocr-results');
+  ocrStatus.textContent = 'Reading text from image...';
+  ocrStatus.style.display = 'block';
+  ocrResults.style.display = 'none';
+
+  const text = await ocrImage(imageSource);
+  ocrStatus.style.display = 'none';
+
+  if (!text) {
+    ocrStatus.textContent = 'No text detected';
+    ocrStatus.style.display = 'block';
+    setTimeout(() => { ocrStatus.style.display = 'none'; }, 2500);
+    return;
+  }
+
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  if (autoFill && lines.length === 1) {
+    // Single line — just fill it in
+    $('item-form-desc').value = lines[0].substring(0, 200);
+    showToast('Label detected from photo', 'success');
+    return;
+  }
+
+  // Show all detected lines as clickable options
+  ocrResults.style.display = 'block';
+  ocrResults.innerHTML = '<div class="ocr-results-label">Detected text (tap to use):</div>' +
+    lines.map((line, i) => `<button class="ocr-line" data-index="${i}">${esc(line)}</button>`).join('');
+
+  ocrResults.querySelectorAll('.ocr-line').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      $('item-form-desc').value = btn.textContent.substring(0, 200);
+      ocrResults.style.display = 'none';
+      showToast('Label applied', 'success');
+    });
+  });
+
+  if (autoFill && lines.length > 0) {
+    $('item-form-desc').value = lines[0].substring(0, 200);
+  }
+}
+
+$('item-ocr-btn').addEventListener('click', () => {
+  if (currentPhoto) {
+    runItemOcr(currentPhoto, false);
+  }
 });
 
 $('item-form-save').addEventListener('click', async () => {
@@ -889,9 +935,56 @@ $('multi-crop-save').addEventListener('click', async () => {
 
 // ── OCR ──
 
+function preprocessForOcr(imageSource) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      // Scale up small images for better OCR
+      const minDim = 1000;
+      let { width, height } = img;
+      const scale = Math.max(1, minDim / Math.min(width, height));
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Convert to grayscale and boost contrast
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const d = imageData.data;
+
+      // First pass: find min/max luminance for auto-contrast
+      let min = 255, max = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        if (gray < min) min = gray;
+        if (gray > max) max = gray;
+      }
+      const range = max - min || 1;
+
+      // Second pass: normalize contrast and apply adaptive threshold
+      for (let i = 0; i < d.length; i += 4) {
+        let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        // Stretch contrast to full 0-255 range
+        gray = ((gray - min) / range) * 255;
+        d[i] = d[i + 1] = d[i + 2] = gray;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(imageSource);
+    img.src = imageSource;
+  });
+}
+
 async function ocrImage(imageSource) {
   try {
-    const { data: { text } } = await Tesseract.recognize(imageSource, 'eng');
+    const processed = await preprocessForOcr(imageSource);
+    const { data: { text } } = await Tesseract.recognize(processed, 'eng');
     return text.trim();
   } catch (e) {
     console.error('OCR failed:', e);

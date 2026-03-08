@@ -429,6 +429,37 @@ body {
   margin-top: 6px;
 }
 
+.ocr-results {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.ocr-results-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.ocr-line {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.ocr-line:hover, .ocr-line:focus {
+  border-color: var(--accent);
+}
+
 /* ── Import preview ── */
 
 .import-summary {
