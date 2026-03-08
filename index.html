@@ -197,6 +197,15 @@
         <button class="btn btn-secondary btn-block" id="data-import-btn" style="margin-bottom:10px;">Import Data (JSON)</button>
         <input type="file" accept=".json,application/json" id="data-import-input" style="display:none;">
       </div>
+      <div class="sync-panel" style="margin-top:12px;">
+        <h3 class="sync-panel-title">Recovery</h3>
+        <p class="data-warning" style="text-align:left;margin-bottom:8px;">
+          Scan local browser databases on this origin and recover by exporting or restoring any dataset found.
+        </p>
+        <button class="btn btn-secondary btn-block" id="recovery-scan-btn">Scan Databases</button>
+        <div class="import-warning" id="recovery-status" style="display:none;margin-top:10px;"></div>
+        <div id="recovery-results" class="recovery-results" style="margin-top:10px;"></div>
+      </div>
       <div id="import-preview" style="display:none;">
         <div class="import-summary" id="import-summary"></div>
         <div class="import-warning" id="import-warning" style="display:none;"></div>
