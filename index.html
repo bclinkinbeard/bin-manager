@@ -44,6 +44,7 @@
       <div id="search-empty" class="empty-state">
         No bins yet. Scan a QR code or create a bin to start.
       </div>
+      <button class="btn btn-primary add-item-fab" id="search-add-item">+ Add Item</button>
     </div>
 
     <!-- Scan view -->
@@ -80,7 +81,10 @@
         </select>
       </div>
       <div id="bin-items-list"></div>
-      <button class="btn btn-primary btn-block" id="bin-add-item" style="margin-top:12px;">+ Add Item</button>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-primary" id="bin-add-item" style="flex:1;">+ Add Item</button>
+        <button class="btn btn-secondary" id="bin-add-multi" style="flex:1;">+ Multi-Item Photo</button>
+      </div>
     </div>
 
     <!-- Create / edit bin form -->
@@ -110,6 +114,10 @@
     <div id="view-item-form" class="view">
       <button class="btn-back" id="item-form-back">&larr; Back</button>
       <h2 style="font-size:16px;margin-bottom:16px;" id="item-form-title">Add Item</h2>
+      <div class="form-group" id="item-form-bin-group">
+        <label for="item-form-bin">Bin</label>
+        <select id="item-form-bin" class="sort-select" style="width:100%;padding:10px 14px;font-size:13px;"></select>
+      </div>
       <div class="form-group">
         <label for="item-form-desc">Description</label>
         <input type="text" id="item-form-desc" placeholder="What is this item?">
@@ -121,9 +129,9 @@
       <div class="form-group">
         <label for="item-photo-input">Photo</label>
         <div class="photo-input-wrap">
-          <button class="btn btn-secondary photo-btn" id="item-photo-btn">Take Photo</button>
+          <button class="btn btn-secondary photo-btn" id="item-photo-btn">Add Photo</button>
           <img class="photo-preview" id="item-photo-preview" alt="">
-          <input type="file" accept="image/*" capture="environment" id="item-photo-input" style="display:none;">
+          <input type="file" accept="image/*" id="item-photo-input" style="display:none;">
         </div>
       </div>
       <button class="btn btn-primary btn-block" id="item-form-save">Save Item</button>
@@ -143,6 +151,23 @@
         <button class="btn btn-secondary" id="generate-cancel">Cancel</button>
       </div>
       <div id="labels-grid" class="label-grid"></div>
+    </div>
+
+    <!-- Multi-item photo crop view -->
+    <div id="view-multi-crop" class="view">
+      <button class="btn-back" id="multi-crop-back">&larr; Back</button>
+      <h2 style="font-size:16px;margin-bottom:12px;">Select Items in Photo</h2>
+      <p class="multi-crop-hint" id="multi-crop-hint">Draw rectangles around each item</p>
+      <div class="multi-crop-canvas-wrap" id="multi-crop-canvas-wrap">
+        <canvas id="multi-crop-canvas"></canvas>
+      </div>
+      <div class="multi-crop-toolbar">
+        <button class="btn btn-secondary btn-sm" id="multi-crop-undo">Undo</button>
+        <button class="btn btn-secondary btn-sm" id="multi-crop-clear">Clear All</button>
+        <span class="multi-crop-count" id="multi-crop-count">0 selections</span>
+      </div>
+      <div id="multi-crop-items"></div>
+      <button class="btn btn-primary btn-block" id="multi-crop-save" style="margin-top:12px;" disabled>Save All Items</button>
     </div>
 
     <!-- Data management view -->
