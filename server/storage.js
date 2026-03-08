@@ -21,8 +21,19 @@ function buildSnapshotId() {
 }
 
 function isNotFoundError(error) {
+  if (!error) return false;
+  const status = Number(error.status || error?.cause?.status || 0);
+  if (status === 404) return true;
+  const code = String(error.code || '').toLowerCase();
+  if (code === 'not_found') return true;
+  const name = String(error.name || '').toLowerCase();
+  if (name.includes('notfound')) return true;
   const message = String(error?.message || '').toLowerCase();
-  return message.includes('not found') || message.includes('404');
+  return (
+    message.includes('not found') ||
+    message.includes('does not exist') ||
+    message.includes('404')
+  );
 }
 
 async function getJson(pathname) {
