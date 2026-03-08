@@ -22,8 +22,11 @@
   <!-- Header -->
   <header class="header">
     <h1>BinManager</h1>
-    <div class="stats">
-      <span id="stat-bins">0</span> bins &middot; <span id="stat-items">0</span> items
+    <div>
+      <div class="stats">
+        <span id="stat-bins">0</span> bins &middot; <span id="stat-items">0</span> items
+      </div>
+      <div class="app-version" id="app-version">Version loading...</div>
     </div>
   </header>
 
@@ -178,6 +181,7 @@
     <!-- Data management view -->
     <div id="view-data" class="view">
       <h2 style="font-size:16px;margin-bottom:16px;">Data Management</h2>
+      <div class="app-version app-version-data" id="app-version-data">Version loading...</div>
       <div class="sync-panel">
         <h3 class="sync-panel-title">Sync Status (This Device)</h3>
         <div class="sync-status-row"><span>Last export</span><span id="sync-last-export">Never</span></div>

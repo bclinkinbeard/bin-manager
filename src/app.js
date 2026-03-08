@@ -19,6 +19,9 @@ import {
   getLatestLocalSyncMs,
 } from './lib/sync-meta.js';
 
+const APP_VERSION = '2026.03.08-v23';
+const APP_CACHE_VERSION = 'binmanager-v23';
+
 // ── DOM refs ──
 
 const views = {
@@ -70,6 +73,14 @@ let openEditItemForm = async () => {};
 // ── Custom Confirmation Modal ──
 const confirmAction = createConfirmAction($);
 const showToast = createToast($);
+
+function renderAppVersion() {
+  const label = `${APP_VERSION} (${APP_CACHE_VERSION})`;
+  const headerEl = $('app-version');
+  const dataEl = $('app-version-data');
+  if (headerEl) headerEl.textContent = label;
+  if (dataEl) dataEl.textContent = label;
+}
 
 // ── Navigation ──
 
@@ -1449,6 +1460,7 @@ document.addEventListener('keydown', (e) => {
 
 async function init() {
   try {
+    renderAppVersion();
     await db.open();
     // Restore sort preference
     const savedSort = localStorage.getItem('itemSortOrder');
