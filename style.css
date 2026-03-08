@@ -459,6 +459,64 @@ body {
   color: var(--text);
 }
 
+.sync-panel,
+.sync-checklist {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.sync-panel-title {
+  margin: 0 0 10px 0;
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.sync-status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 12px;
+  border-top: 1px solid var(--surface2);
+}
+
+.sync-status-row:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.sync-status-row span:last-child {
+  color: var(--text);
+  text-align: right;
+}
+
+.sync-checklist ol {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.sync-checklist li + li {
+  margin-top: 6px;
+}
+
+.import-warning {
+  background: rgba(255, 152, 0, 0.12);
+  border: 1px solid rgba(255, 152, 0, 0.45);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin: -4px 0 14px 0;
+  font-size: 12px;
+  color: #ffbe5c;
+}
+
 /* ── Buttons ── */
 
 .btn {

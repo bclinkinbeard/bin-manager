@@ -37,6 +37,14 @@ const ITEMS_PER_PAGE = 20;
 let itemsPage = 1;
 let currentBinItems = [];
 let currentTagOriginBinId = null;
+let pendingImportData = null;
+let pendingImportExportedAt = null;
+
+const SYNC_META_KEYS = {
+  lastExportAt: 'bmLastExportAt',
+  lastImportAt: 'bmLastImportAt',
+  lastImportedFileExportedAt: 'bmLastImportedFileExportedAt',
+};
 
 // ── Custom Confirmation Modal ──
 
@@ -75,6 +83,10 @@ function showView(name) {
   // Stop scanner when leaving scan view
   if (name !== 'scan') {
     scanner.stop();
+  }
+
+  if (name === 'data') {
+    refreshSyncStatus();
   }
 
   // Focus management: move focus to the view's first focusable element
@@ -121,6 +133,75 @@ function parseTags(tagsStr) {
   return tagsStr
     ? [...new Set(tagsStr.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean))]
     : [];
+}
+
+function parseValidIso(iso) {
+  if (!iso || typeof iso !== 'string') return null;
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
+function getSyncMetaIso(key) {
+  return parseValidIso(localStorage.getItem(key));
+}
+
+function setSyncMetaIso(key, iso) {
+  const safeIso = parseValidIso(iso);
+  if (!safeIso) return;
+  localStorage.setItem(key, safeIso);
+}
+
+function formatDateTime(iso) {
+  const safeIso = parseValidIso(iso);
+  if (!safeIso) return null;
+  const d = new Date(safeIso);
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function getLatestLocalSyncMs() {
+  const lastExport = getSyncMetaIso(SYNC_META_KEYS.lastExportAt);
+  const lastImport = getSyncMetaIso(SYNC_META_KEYS.lastImportAt);
+  const exportMs = lastExport ? Date.parse(lastExport) : 0;
+  const importMs = lastImport ? Date.parse(lastImport) : 0;
+  return Math.max(exportMs, importMs);
+}
+
+function refreshSyncStatus() {
+  const exportLabel = formatDateTime(getSyncMetaIso(SYNC_META_KEYS.lastExportAt)) || 'Never';
+  const importLabel = formatDateTime(getSyncMetaIso(SYNC_META_KEYS.lastImportAt)) || 'Never';
+  const importedFileLabel = formatDateTime(getSyncMetaIso(SYNC_META_KEYS.lastImportedFileExportedAt)) || 'Unknown';
+  $('sync-last-export').textContent = exportLabel;
+  $('sync-last-import').textContent = importLabel;
+  $('sync-last-imported-file-export').textContent = importedFileLabel;
+}
+
+function hideImportWarning() {
+  $('import-warning').style.display = 'none';
+  $('import-warning').textContent = '';
+}
+
+function showImportWarning(message) {
+  $('import-warning').textContent = message;
+  $('import-warning').style.display = 'block';
+}
+
+function updateStaleImportWarning(incomingExportedAt) {
+  hideImportWarning();
+  const safeIncoming = parseValidIso(incomingExportedAt);
+  if (!safeIncoming) return;
+  const latestLocalMs = getLatestLocalSyncMs();
+  if (!Number.isFinite(latestLocalMs) || latestLocalMs <= 0) return;
+  const incomingMs = Date.parse(safeIncoming);
+  if (incomingMs < latestLocalMs) {
+    const incomingLabel = formatDateTime(safeIncoming);
+    showImportWarning(`This file appears older (${incomingLabel}) than your latest local sync activity on this device. You can still import it if intentional.`);
+  }
 }
 
 // ── Stats ──
@@ -1043,6 +1124,8 @@ $('data-export').addEventListener('click', async () => {
     a.download = `binmanager-export-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setSyncMetaIso(SYNC_META_KEYS.lastExportAt, new Date().toISOString());
+    refreshSyncStatus();
     showToast('Data exported successfully', 'success');
   } catch (e) {
     showToast('Export failed: ' + e.message, 'error');
@@ -1051,16 +1134,20 @@ $('data-export').addEventListener('click', async () => {
 
 $('data-import-btn').addEventListener('click', () => $('data-import-input').click());
 
-let pendingImportData = null;
-
 $('data-import-input').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  pendingImportData = null;
+  pendingImportExportedAt = null;
+  hideImportWarning();
   const reader = new FileReader();
   reader.onload = (ev) => {
     try {
       const data = JSON.parse(ev.target.result);
       if (!validateImportData(data)) {
+        pendingImportData = null;
+        pendingImportExportedAt = null;
+        $('import-preview').style.display = 'none';
         confirmAction({
           title: 'Invalid File',
           message: 'This file does not contain valid BinManager data. Expected bins and/or items arrays.',
@@ -1070,11 +1157,17 @@ $('data-import-input').addEventListener('change', (e) => {
         return;
       }
       pendingImportData = data;
+      pendingImportExportedAt = parseValidIso(data.exportedAt);
       const binCount = (data.bins || []).length;
       const itemCount = (data.items || []).length;
       $('import-summary').textContent = `This file contains ${binCount} bin${binCount === 1 ? '' : 's'} and ${itemCount} item${itemCount === 1 ? '' : 's'}.`;
+      updateStaleImportWarning(data.exportedAt);
       $('import-preview').style.display = 'block';
     } catch (err) {
+      pendingImportData = null;
+      pendingImportExportedAt = null;
+      hideImportWarning();
+      $('import-preview').style.display = 'none';
       confirmAction({
         title: 'Invalid File',
         message: 'Could not parse the selected file as JSON.',
@@ -1101,8 +1194,17 @@ $('import-confirm').addEventListener('click', async () => {
   }
 
   await db.importAll(pendingImportData, mode);
+  setSyncMetaIso(SYNC_META_KEYS.lastImportAt, new Date().toISOString());
+  if (pendingImportExportedAt) {
+    setSyncMetaIso(SYNC_META_KEYS.lastImportedFileExportedAt, pendingImportExportedAt);
+  } else {
+    localStorage.removeItem(SYNC_META_KEYS.lastImportedFileExportedAt);
+  }
+  refreshSyncStatus();
   pendingImportData = null;
+  pendingImportExportedAt = null;
   $('import-preview').style.display = 'none';
+  hideImportWarning();
   await refreshStats();
   showView('search');
   await refreshSearch();
@@ -1110,7 +1212,9 @@ $('import-confirm').addEventListener('click', async () => {
 
 $('import-cancel').addEventListener('click', () => {
   pendingImportData = null;
+  pendingImportExportedAt = null;
   $('import-preview').style.display = 'none';
+  hideImportWarning();
 });
 
 // ── Import Validation ──
@@ -1189,6 +1293,7 @@ async function init() {
       itemSortOrder = savedSort;
       $('item-sort').value = savedSort;
     }
+    refreshSyncStatus();
     await refreshStats();
     await refreshSearch();
   } catch (e) {
