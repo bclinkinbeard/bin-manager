@@ -185,6 +185,20 @@
     <!-- Data management view -->
     <div id="view-data" class="view">
       <h2 style="font-size:16px;margin-bottom:16px;">Data Management</h2>
+      <div class="sync-panel">
+        <h3 class="sync-panel-title">Sync Status (This Device)</h3>
+        <div class="sync-status-row"><span>Last export</span><span id="sync-last-export">Never</span></div>
+        <div class="sync-status-row"><span>Last import</span><span id="sync-last-import">Never</span></div>
+        <div class="sync-status-row"><span>Imported file export time</span><span id="sync-last-imported-file-export">Unknown</span></div>
+      </div>
+      <div class="sync-checklist">
+        <h3 class="sync-panel-title">Manual Sync Checklist</h3>
+        <ol>
+          <li>On source device, tap Export Data (JSON).</li>
+          <li>Transfer the file (AirDrop, Drive, email, etc.).</li>
+          <li>On target device, import using Merge by default.</li>
+        </ol>
+      </div>
       <div class="data-actions">
         <button class="btn btn-primary btn-block" id="data-export" style="margin-bottom:10px;">Export Data (JSON)</button>
         <button class="btn btn-secondary btn-block" id="data-import-btn" style="margin-bottom:10px;">Import Data (JSON)</button>
@@ -192,6 +206,7 @@
       </div>
       <div id="import-preview" style="display:none;">
         <div class="import-summary" id="import-summary"></div>
+        <div class="import-warning" id="import-warning" style="display:none;"></div>
         <div class="form-group">
           <label for="import-mode">Import Mode</label>
           <select id="import-mode" class="sort-select" style="width:100%;">
