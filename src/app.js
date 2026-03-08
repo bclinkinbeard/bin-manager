@@ -938,23 +938,13 @@ $('multi-crop-save').addEventListener('click', async () => {
 
 let scribeInitialized = false;
 
-function dataUrlToFile(dataUrl, filename = 'image.png') {
-  const [header, base64] = dataUrl.split(',');
-  const mime = header.match(/:(.*?);/)[1];
-  const bytes = atob(base64);
-  const arr = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-  return new File([arr], filename, { type: mime });
-}
-
 async function ocrImage(imageSource) {
   try {
     if (!scribeInitialized) {
       scribe.init({ ocr: true, font: true });
       scribeInitialized = true;
     }
-    const file = dataUrlToFile(imageSource);
-    const text = await scribe.extractText([file]);
+    const text = await scribe.extractText([imageSource]);
     return (text || '').trim();
   } catch (e) {
     console.error('OCR failed:', e);
