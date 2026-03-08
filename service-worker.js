@@ -1,4 +1,4 @@
-const CACHE_NAME = 'binmanager-v13';
+const CACHE_NAME = 'binmanager-v14';
 const FONT_CACHE = 'binmanager-fonts-v1';
 const ASSETS = [
   './',
@@ -16,6 +16,9 @@ const ASSETS = [
   './src/lib/import-validation.js',
   './src/lib/ids.js',
   './src/lib/sync-meta.js',
+  './src/views/search.js',
+  './src/views/item-form.js',
+  './src/views/bins.js',
   './manifest.json',
   'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js',
