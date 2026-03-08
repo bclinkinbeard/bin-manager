@@ -945,6 +945,18 @@ function compressImage(dataUrl, maxDim = 800, quality = 0.7) {
 
 // ── Recovery Helpers ──
 
+const RECOVERY_PRIMARY_DB_NAME = 'binManagerDB';
+const RECOVERY_FALLBACK_DB_NAMES = [
+  RECOVERY_PRIMARY_DB_NAME,
+  'BinManagerDB',
+  'binmanagerDB',
+  'binmanagerdb',
+  'bin-manager-db',
+  'bin_manager_db',
+  'inventoryDB',
+  'inventory-db',
+];
+
 function idbReq(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -964,9 +976,22 @@ function withTimeout(promise, ms, label) {
 
 function openNamedDb(name, version) {
   return new Promise((resolve, reject) => {
+    let createdDuringOpen = false;
     const req = typeof version === 'number' ? indexedDB.open(name, version) : indexedDB.open(name);
-    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = () => {
+      createdDuringOpen = true;
+    };
+    req.onsuccess = () => resolve({ connection: req.result, createdDuringOpen });
     req.onerror = () => reject(req.error);
+  });
+}
+
+function deleteNamedDb(name) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(name);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => resolve();
   });
 }
 
@@ -1014,24 +1039,25 @@ function setRecoveryStatus(message, isError = false) {
 }
 
 async function listRecoveryDatabases() {
+  const fallback = RECOVERY_FALLBACK_DB_NAMES.map((name) => ({ name, version: null, source: 'fallback-probe' }));
   if (typeof indexedDB.databases !== 'function') {
-    return [{ name: 'binManagerDB', version: null, source: 'fallback' }];
+    return fallback;
   }
   let dbs = [];
   try {
     dbs = await withTimeout(indexedDB.databases(), 2500, 'Database listing');
   } catch (_) {
-    return [{ name: 'binManagerDB', version: null, source: 'fallback' }];
+    return fallback;
   }
   const named = dbs.filter((d) => d && d.name).map((d) => ({ name: d.name, version: d.version || null, source: 'native' }));
   if (named.length === 0) {
-    return [{ name: 'binManagerDB', version: null, source: 'fallback' }];
+    return fallback;
   }
   return named;
 }
 
 async function inspectRecoveryDatabase(dbInfo) {
-  const connection = await withTimeout(
+  const { connection, createdDuringOpen } = await withTimeout(
     openNamedDb(dbInfo.name, dbInfo.version || undefined),
     2500,
     `Opening ${dbInfo.name}`
@@ -1049,6 +1075,9 @@ async function inspectRecoveryDatabase(dbInfo) {
       2500,
       `Inspecting ${dbInfo.name}`
     );
+    if (dbInfo.source === 'fallback-probe' && createdDuringOpen && !hasBins && !hasItems && !hasPhotos) {
+      return null;
+    }
     return {
       ...dbInfo,
       hasBins,
@@ -1060,6 +1089,13 @@ async function inspectRecoveryDatabase(dbInfo) {
     };
   } finally {
     connection.close();
+    if (dbInfo.source === 'fallback-probe' && createdDuringOpen) {
+      try {
+        await withTimeout(deleteNamedDb(dbInfo.name), 2000, `Cleaning up ${dbInfo.name}`);
+      } catch (_) {
+        // Ignore cleanup errors from blocked/unsupported delete calls.
+      }
+    }
   }
 }
 
@@ -1104,7 +1140,7 @@ function downloadJson(data, filenameBase) {
 }
 
 async function extractRecoveryPayload(dbName) {
-  const connection = await openNamedDb(dbName);
+  const { connection } = await openNamedDb(dbName);
   try {
     if (!dbHasStore(connection, 'bins') || !dbHasStore(connection, 'items')) {
       throw new Error('Selected database is missing bins/items stores.');
@@ -1161,21 +1197,32 @@ $('recovery-scan-btn').addEventListener('click', async () => {
       const dbInfo = dbs[i];
       setRecoveryStatus(`Scanning ${i + 1}/${dbs.length}: ${dbInfo.name}...`);
       try {
-        inspected.push(await inspectRecoveryDatabase(dbInfo));
+        const result = await inspectRecoveryDatabase(dbInfo);
+        if (result) inspected.push(result);
       } catch (_) {
-        inspected.push({
-          ...dbInfo,
-          hasBins: false,
-          hasItems: false,
-          hasPhotos: false,
-          binCount: 0,
-          itemCount: 0,
-          photoCount: 0,
-        });
+        if (dbInfo.source !== 'fallback-probe') {
+          inspected.push({
+            ...dbInfo,
+            hasBins: false,
+            hasItems: false,
+            hasPhotos: false,
+            binCount: 0,
+            itemCount: 0,
+            photoCount: 0,
+          });
+        }
       }
     }
     renderRecoveryResults(inspected);
     const candidates = inspected.filter((d) => d.binCount > 0 || d.itemCount > 0).length;
+    if (inspected.length === 0) {
+      setRecoveryStatus(`Scan complete. No databases were detected on ${window.location.origin}. If your data lived on another domain, open that domain on this phone and export there.`);
+      return;
+    }
+    if (candidates === 0) {
+      setRecoveryStatus(`Scan complete. Found ${inspected.length} database${inspected.length === 1 ? '' : 's'} on ${window.location.origin}, but none had bins/items. If you changed domains, recover from the old domain first.`);
+      return;
+    }
     setRecoveryStatus(`Scan complete. Found ${inspected.length} database${inspected.length === 1 ? '' : 's'} on this origin (${candidates} with data).`);
   } catch (err) {
     setRecoveryStatus(`Recovery scan failed: ${err.message}`, true);
