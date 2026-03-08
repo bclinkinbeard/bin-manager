@@ -56,7 +56,6 @@ async function getJson(pathname) {
 async function putJson(pathname, data) {
   const body = JSON.stringify(data);
   const result = await put(pathname, body, {
-    access: 'public',
     addRandomSuffix: false,
     allowOverwrite: true,
     contentType: 'application/json; charset=utf-8',
@@ -83,7 +82,6 @@ async function putPhotoFromDataUrl(pathname, dataUrl, explicitMimeType) {
   const { mimeType: parsedMimeType, buffer } = dataUrlToBytes(dataUrl);
   const contentType = explicitMimeType || parsedMimeType || 'application/octet-stream';
   return put(pathname, buffer, {
-    access: 'public',
     addRandomSuffix: false,
     allowOverwrite: false,
     contentType,
