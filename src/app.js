@@ -13,7 +13,7 @@ const views = {
   binForm: $('view-bin-form'),
   itemForm: $('view-item-form'),
   multiCrop: $('view-multi-crop'),
-  labels: $('view-labels'),
+  bins: $('view-bins'),
   data: $('view-data'),
 };
 
@@ -118,7 +118,7 @@ function routeForCurrentView() {
   }
 
   if (activeViewName === 'scan') return 'scan';
-  if (activeViewName === 'labels') return 'labels';
+  if (activeViewName === 'bins') return 'bins';
   if (activeViewName === 'data') return 'data';
 
   if (activeViewName === 'bin') {
@@ -192,7 +192,7 @@ function parseRouteFromHash() {
   }
 
   if (parts[0] === 'scan') return { view: 'scan' };
-  if (parts[0] === 'labels') return { view: 'labels' };
+  if (parts[0] === 'bins') return { view: 'bins' };
   if (parts[0] === 'data') return { view: 'data' };
   if (parts[0] === 'bin') return { view: 'bin', binId: parts[1] || '' };
   if (parts[0] === 'tag') return { view: 'tag', tag: parts[1] || '', originBinId: params.get('origin') || null };
@@ -223,9 +223,9 @@ async function applyRouteFromHash() {
       return;
     }
 
-    if (route.view === 'labels') {
-      showView('labels', { syncUrl: false });
-      await renderLabels();
+    if (route.view === 'bins') {
+      showView('bins', { syncUrl: false });
+      await renderBins();
       return;
     }
 
@@ -294,9 +294,9 @@ navBtns.forEach((btn) => {
       startScanner();
       return;
     }
-    if (view === 'labels') {
-      showView('labels');
-      renderLabels();
+    if (view === 'bins') {
+      showView('bins');
+      renderBins();
       return;
     }
     if (view === 'data') {
@@ -861,9 +861,22 @@ async function populateBinSelector(selectedBinId) {
 }
 
 $('search-add-item').addEventListener('click', async () => {
-  const bins = (await db.getAllBins()).filter(b => !b.archived);
+  let bins = (await db.getAllBins()).filter(b => !b.archived);
   if (bins.length === 0) {
-    showToast('Create a bin first', 'error');
+    const next = await db.getNextBinNumber();
+    const newBin = {
+      id: `BIN-${String(next).padStart(3, '0')}`,
+      name: '',
+      location: '',
+      description: '',
+      createdAt: new Date().toISOString(),
+      archived: false,
+    };
+    await db.putBin(newBin);
+    await refreshStats();
+    showToast(`Created ${newBin.id}`, 'success');
+    currentBinId = newBin.id;
+    openAddItemForm(newBin.id);
     return;
   }
   currentBinId = null;
@@ -1250,25 +1263,25 @@ function compressImage(dataUrl, maxDim = 800, quality = 0.7) {
   });
 }
 
-// ── Labels ──
+// ── Bins ──
 
-async function renderLabels() {
+async function renderBins() {
   const bins = (await db.getAllBins()).filter(b => !b.archived);
-  const grid = $('labels-grid');
+  const grid = $('bins-grid');
 
   if (bins.length === 0) {
-    grid.innerHTML = '<div class="empty-state">No bins yet. Generate some bins first.</div>';
+    grid.innerHTML = '<div class="empty-state">No bins yet. Tap + Add Bin to create one.</div>';
     return;
   }
 
   grid.innerHTML = bins
     .map(
       (b) => `
-    <div class="label-card">
+    <button class="label-card label-card-btn" data-bin-id="${esc(b.id)}">
       <canvas data-qr-id="${esc(b.id)}"></canvas>
       <div class="label-text">${esc(b.id)}</div>
       <div class="label-name">${esc(b.name || '')}</div>
-    </div>`
+    </button>`
     )
     .join('');
 
@@ -1283,40 +1296,17 @@ async function renderLabels() {
   ));
 }
 
-$('labels-print').addEventListener('click', () => window.print());
-
-$('labels-create').addEventListener('click', () => {
-  $('generate-controls').style.display = 'flex';
+$('bins-grid').addEventListener('click', (e) => {
+  const card = e.target.closest('[data-bin-id]');
+  if (card) openBin(card.dataset.binId);
 });
 
-$('generate-cancel').addEventListener('click', () => {
-  $('generate-controls').style.display = 'none';
-});
+$('bins-print').addEventListener('click', () => window.print());
 
-$('generate-go').addEventListener('click', async () => {
-  const count = parseInt($('generate-count').value, 10) || 10;
-  let next = await db.getNextBinNumber();
-  const bins = [];
-  for (let i = 0; i < count; i++) {
-    bins.push({
-      id: `BIN-${String(next).padStart(3, '0')}`,
-      name: '',
-      location: '',
-      description: '',
-      createdAt: new Date().toISOString(),
-      archived: false,
-    });
-    next++;
-  }
-  await db.putBins(bins);
-  $('generate-controls').style.display = 'none';
-  await refreshStats();
-  await renderLabels();
-});
-
-$('labels-back').addEventListener('click', () => {
-  showView('search');
-  refreshSearch();
+$('bins-add').addEventListener('click', async () => {
+  const next = await db.getNextBinNumber();
+  const id = `BIN-${String(next).padStart(3, '0')}`;
+  openBinForm(id, null);
 });
 
 // ── Data (Export / Import) ──

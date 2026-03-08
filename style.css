@@ -688,7 +688,14 @@ body {
 
 .nav-btn.active svg { stroke: var(--accent); }
 
-/* ── Print labels view ── */
+/* ── Bins view ── */
+
+.bins-controls {
+  margin-bottom: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
 
 .label-grid {
   display: grid;
@@ -701,6 +708,23 @@ body {
   border-radius: 6px;
   padding: 12px;
   text-align: center;
+}
+
+.label-card-btn {
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.label-card-btn:hover,
+.label-card-btn:active {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.25);
+}
+
+.label-card-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .label-card canvas {
@@ -723,13 +747,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.print-controls {
-  margin-bottom: 16px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
 }
 
 /* ── Data management view ── */
@@ -985,8 +1002,8 @@ body {
     flex-wrap: wrap;
   }
 
-  /* Print controls: wrap on small screens */
-  .print-controls {
+  /* Bins controls: wrap on small screens */
+  .bins-controls {
     flex-wrap: wrap;
   }
 
@@ -1050,7 +1067,7 @@ body {
 /* ── Print styles ── */
 
 @media print {
-  .header, .bottom-nav, .print-controls, .btn-back, .modal-overlay, .image-modal-overlay { display: none !important; }
+  .header, .bottom-nav, .bins-controls, .btn-back, .modal-overlay, .image-modal-overlay { display: none !important; }
   body { background: #fff; max-width: none; width: auto; color: #000; }
   .main { padding: 0; overflow: visible; }
   .view { display: none !important; }
