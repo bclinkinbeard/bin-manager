@@ -60,6 +60,14 @@ function normalizeItem(item, nowIso) {
     normalized.photoId = item.photoId.trim();
   }
 
+  if (typeof item.photoHash === 'string' && item.photoHash.trim()) {
+    normalized.photoHash = item.photoHash.trim().toLowerCase();
+  }
+
+  if (typeof item.photoMimeType === 'string' && item.photoMimeType.trim()) {
+    normalized.photoMimeType = item.photoMimeType.trim().toLowerCase();
+  }
+
   return normalized;
 }
 
@@ -157,7 +165,7 @@ function prepareImportData(rawData) {
       items: prepared.items.length,
       archivedBins: prepared.bins.filter((bin) => bin.archived).length,
       taggedItems: prepared.items.filter((item) => Array.isArray(item.tags) && item.tags.length > 0).length,
-      hasPhotos: prepared.items.some((item) => item.photo || item.photoId),
+      hasPhotos: prepared.items.some((item) => item.photo || item.photoId || item.photoHash),
       exportedAt: prepared.exportedAt,
     },
   };

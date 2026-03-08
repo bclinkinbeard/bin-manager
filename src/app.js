@@ -11,6 +11,7 @@ import { formatBinId } from './lib/ids.js';
 import { createSearchView } from './views/search.js';
 import { createItemFormView } from './views/item-form.js';
 import { createBinsView } from './views/bins.js';
+import { createCloudSyncManager } from './lib/cloud-sync.js';
 import {
   parseValidIso,
   getSyncMetaIso,
@@ -19,8 +20,8 @@ import {
   getLatestLocalSyncMs,
 } from './lib/sync-meta.js';
 
-const APP_VERSION = '2026.03.08-v24';
-const APP_CACHE_VERSION = 'binmanager-v24';
+const APP_VERSION = '2026.03.08-v26';
+const APP_CACHE_VERSION = 'binmanager-v26';
 
 // ── DOM refs ──
 
@@ -61,6 +62,8 @@ const SYNC_META_KEYS = {
   lastExportAt: 'bmLastExportAt',
   lastImportAt: 'bmLastImportAt',
   lastImportedFileExportedAt: 'bmLastImportedFileExportedAt',
+  lastCloudPullAt: 'bmLastCloudPullAt',
+  lastCloudPushAt: 'bmLastCloudPushAt',
 };
 let currentTag = null;
 let isApplyingRoute = false;
@@ -69,6 +72,7 @@ let refreshSearch = async () => {};
 let renderBins = async () => {};
 let openAddItemForm = async () => {};
 let openEditItemForm = async () => {};
+let refreshCloudSync = async () => {};
 
 // ── Custom Confirmation Modal ──
 const confirmAction = createConfirmAction($);
@@ -100,6 +104,7 @@ function showView(name, options = {}) {
 
   if (name === 'data') {
     refreshSyncStatus();
+    refreshCloudSync();
   }
 
   // Focus management: move focus to the view's first focusable element
@@ -249,9 +254,13 @@ function refreshSyncStatus() {
   const exportLabel = formatDateTime(getSyncMetaIso(localStorage, SYNC_META_KEYS.lastExportAt)) || 'Never';
   const importLabel = formatDateTime(getSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportAt)) || 'Never';
   const importedFileLabel = formatDateTime(getSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportedFileExportedAt)) || 'Unknown';
+  const cloudPullLabel = formatDateTime(getSyncMetaIso(localStorage, SYNC_META_KEYS.lastCloudPullAt)) || 'Never';
+  const cloudPushLabel = formatDateTime(getSyncMetaIso(localStorage, SYNC_META_KEYS.lastCloudPushAt)) || 'Never';
   $('sync-last-export').textContent = exportLabel;
   $('sync-last-import').textContent = importLabel;
   $('sync-last-imported-file-export').textContent = importedFileLabel;
+  if ($('sync-last-cloud-pull')) $('sync-last-cloud-pull').textContent = cloudPullLabel;
+  if ($('sync-last-cloud-push')) $('sync-last-cloud-push').textContent = cloudPushLabel;
 }
 
 function hideImportWarning() {
@@ -338,6 +347,24 @@ const binsView = createBinsView({
   openBinForm: (id, existingBin, options) => openBinForm(id, existingBin, options),
 });
 renderBins = binsView.renderBins;
+
+const cloudSyncManager = createCloudSyncManager({
+  db,
+  $,
+  showToast,
+  confirmAction,
+  refreshStats: () => refreshStats(),
+  refreshSearch: () => refreshSearch(),
+  showView: (name, options) => showView(name, options),
+  refreshSyncStatus: () => refreshSyncStatus(),
+  localStorage,
+  syncMetaKeys: SYNC_META_KEYS,
+  setSyncMetaIso,
+  getSyncMetaIso,
+  formatDateTime,
+  prepareImportData,
+});
+refreshCloudSync = cloudSyncManager.refresh;
 
 // ── Scanner ──
 
@@ -1468,6 +1495,7 @@ async function init() {
   try {
     renderAppVersion();
     await db.open();
+    await cloudSyncManager.init();
     // Restore sort preference
     const savedSort = localStorage.getItem('itemSortOrder');
     if (savedSort) {

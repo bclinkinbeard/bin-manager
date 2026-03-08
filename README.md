@@ -1,59 +1,88 @@
 # BinManager
 
-A Progressive Web App for QR-based bin and inventory management. Organize items into labeled bins, generate printable QR code labels, and scan them to quickly look up or add items.
+A Progressive Web App for QR-based bin and inventory management.
 
-All data stays in your browser — there is no backend or account required.
+## Modes
+
+- Local-only: everything in browser IndexedDB.
+- Optional cloud sync: Vercel API + Vercel Blob, authenticated by a user-provided Sync Key.
+
+If cloud env vars are missing, local-only mode still works.
 
 ## Features
 
-- **Search** — Fuzzy search across all bins and items from the home screen
-- **QR Scanning** — Scan a bin's QR label with your phone camera to jump straight to its contents. Scanning an unknown code offers to create a new bin for it
-- **Bin Management** — Create, edit, archive, and delete bins. Each bin has a name, location, description, and auto-generated ID (`BIN-001`, `BIN-002`, etc.)
-- **Item Tracking** — Add items to bins with descriptions, tags, and optional photos taken from your device camera
-- **Label Printing** — Generate bins in bulk and print sheets of QR code labels
-- **Data Export/Import** — Export all data as JSON for backup or transfer between devices. Import with merge or replace modes
-- **Offline Support** — Works without an internet connection after first load via service worker caching
-- **Installable** — Can be installed as a standalone app on mobile and desktop through the browser's "Add to Home Screen" option
+- Fuzzy search across bins/items
+- QR scanning to open/create bins
+- Bin create/edit/archive/delete
+- Item tracking with tags and photos
+- Bins view + label printing
+- Data management:
+  - JSON export/import + recovery tools
+  - Cloud sync key connect/clear
+  - Cloud push/pull
+- Offline support via service worker
 
-## How It Works
+## Storage Model
 
-BinManager is a client-side only single-page application. All data (bins, items, and photos) is stored in your browser's IndexedDB. Photos are saved as base64 data URIs.
+### Local (IndexedDB)
 
-The app is built with vanilla JavaScript (ES modules), HTML, and CSS — no frameworks, no build step, no bundler. Three small libraries are loaded from CDNs:
+- `bins`, `items`, `photos` stores
+- photos are blob-backed; items reference by `photoId`
 
-| Library | Purpose |
-|---------|---------|
-| [html5-qrcode](https://github.com/mebjas/html5-qrcode) | QR code scanning via device camera |
-| [Fuse.js](https://www.fusejs.io/) | Fuzzy text search |
-| [qrcode](https://github.com/soldair/node-qrcode) | QR code image generation |
+### Cloud (Vercel Blob)
 
-## Running Locally
+- per-key namespaced snapshot JSON
+- per-key namespaced photos deduplicated by SHA-256 hash
+- per-key namespaced pointer metadata (`latest.json`)
 
-No install or build step needed. Serve the files with any static server:
+Snapshots exclude inline photo data.
+
+## Tech Stack
+
+- Vanilla JS (ES modules), HTML, CSS
+- IndexedDB + Service Worker
+- Vercel API routes (`/api/sync/*`)
+- Vercel Blob (`@vercel/blob`)
+- CDN: html5-qrcode, Fuse.js, qrcode
+
+## Run Locally
+
+### Static local-only
 
 ```bash
-# Python
 python3 -m http.server 8000
-
-# Node
+# or
 npx serve .
 ```
 
-Then open http://localhost:8000.
+### With API routes
+
+```bash
+npm install
+vercel dev
+```
+
+## Environment Variables (Cloud Sync)
+
+- `BLOB_READ_WRITE_TOKEN` (required)
+- `SYNC_KEY_PEPPER` (optional, recommended)
+
+## Tests
+
+```bash
+npm test
+```
 
 ## Project Structure
 
+```text
+├── api/
+│   └── sync/
+├── server/
+├── src/
+├── tests/
+├── index.html
+├── style.css
+├── manifest.json
+└── service-worker.js
 ```
-├── index.html          # Single-page HTML with all views
-├── style.css           # Dark-themed mobile-first styles
-├── manifest.json       # PWA manifest
-├── service-worker.js   # Offline caching
-└── src/
-    ├── app.js          # Application logic, navigation, rendering
-    ├── db.js           # IndexedDB storage layer
-    └── scanner.js      # QR scanner wrapper
-```
-
-## Deployment
-
-The app deploys to Vercel as a static site. Push to the main branch to trigger automatic deployment.

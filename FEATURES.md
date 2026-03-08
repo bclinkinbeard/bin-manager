@@ -1,31 +1,37 @@
-# BinManager Feature Recommendations
+# BinManager Feature Roadmap
 
-## 1. Barcode Scanning
+## 1. Cloud Sync (MVP Implemented)
 
-Enable barcode formats in `html5-qrcode` (EAN-13, UPC-A, Code 128, etc.) so users can catalog items with existing product barcodes.
+Implemented:
+- Sync Key connect/clear in Data view
+- Cloud push/pull actions
+- Per-key namespaced snapshot storage
+- Per-key photo dedupe by SHA-256 hash
 
-- Add `formatsToSupport` in scanner config
-- Match scans against item descriptions or a new `barcode` field
-- Optional: pull product data from a public API
+Current behavior:
+- Push uploads missing photos, then snapshot JSON.
+- Pull replaces local data with cloud snapshot.
+- Sync is explicit/manual (no background auto-sync yet).
 
-## 2. Bulk Item Management
+Next:
+- Merge-mode pull option
+- Better progress/retry UX for large photo sets
+- Optional snapshot compression
 
-Add tools for moving and deleting multiple items at once.
+## 2. Barcode Scanning
 
-- Add multi-select checkboxes in bin detail view
-- Add batch actions: delete selected, move selected
-- Add single-item "Move to bin" action
+- Enable more barcode formats (EAN-13, UPC-A, Code 128)
+- Optional `barcode` field on items
+- Optional metadata enrichment from product APIs
 
-## 3. Multi-Device Sync
+## 3. Bulk Item Management
 
-Provide a way to share inventory across devices.
-
-- Lightweight option: export/import via QR, clipboard, or share sheet
-- Full option: optional backend sync (for example, PouchDB + CouchDB)
+- Multi-select in bin/tag views
+- Batch move/retag/delete
+- Optional undo for destructive operations
 
 ## Notes
 
-- Keep the no-build, minimal-dependency approach
-- Update IndexedDB version and migration logic for schema changes
-- Update service worker `ASSETS` and bump cache version when files change
-- Keep escaping user content with `esc()`
+- Keep no-build frontend architecture
+- Keep service worker assets/cache version updated when client files change
+- Preserve import/export compatibility when schema changes
