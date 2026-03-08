@@ -1,13 +1,13 @@
 import { jsonResponse, serverError } from '../../server/json.js';
-import { requireUser } from '../../server/session.js';
+import { requireSyncNamespace } from '../../server/sync-key.js';
 import { buildMetaPath, getJson } from '../../server/storage.js';
 
 export async function GET(request) {
   try {
-    const { user, response } = requireUser(request);
+    const { namespace, response } = requireSyncNamespace(request);
     if (response) return response;
 
-    const metaPath = buildMetaPath(user.id);
+    const metaPath = buildMetaPath(namespace);
     const meta = await getJson(metaPath);
 
     if (!meta || !meta.snapshotPath) {

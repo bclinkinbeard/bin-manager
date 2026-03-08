@@ -1,5 +1,5 @@
 import { badRequest, jsonResponse, readJson, serverError } from '../../server/json.js';
-import { requireUser } from '../../server/session.js';
+import { requireSyncNamespace } from '../../server/sync-key.js';
 import {
   buildMetaPath,
   buildSnapshotId,
@@ -19,7 +19,7 @@ function hasInlinePhotoData(snapshot) {
 
 export async function POST(request) {
   try {
-    const { user, response } = requireUser(request);
+    const { namespace, response } = requireSyncNamespace(request);
     if (response) return response;
 
     const body = await readJson(request);
@@ -38,11 +38,11 @@ export async function POST(request) {
       return badRequest(`Snapshot too large (${serialized.length} bytes).`);
     }
 
-    const metaPath = buildMetaPath(user.id);
+    const metaPath = buildMetaPath(namespace);
     const previousMeta = await getJson(metaPath);
 
     const snapshotId = buildSnapshotId();
-    const snapshotPath = buildSnapshotPath(user.id, snapshotId);
+    const snapshotPath = buildSnapshotPath(namespace, snapshotId);
     await putJson(snapshotPath, snapshot);
 
     const nextVersion = Number.isInteger(previousMeta?.version) ? previousMeta.version + 1 : 1;

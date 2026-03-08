@@ -1,3 +1,5 @@
+const SYNC_KEY_STORAGE = 'bmCloudSyncKey';
+
 function isPhotoDataUrl(value) {
   return typeof value === 'string' && value.startsWith('data:image/');
 }
@@ -5,6 +7,17 @@ function isPhotoDataUrl(value) {
 function parseDataUrlMimeType(dataUrl) {
   const match = String(dataUrl || '').match(/^data:([^;]+);base64,/i);
   return match ? match[1] : 'application/octet-stream';
+}
+
+function normalizeSyncKey(value) {
+  const key = String(value || '').trim();
+  if (key.length < 8 || key.length > 256) return '';
+  return key;
+}
+
+function syncKeyHint(syncKey) {
+  if (!syncKey) return 'Not set';
+  return `Length ${syncKey.length}`;
 }
 
 async function sha256HexFromDataUrl(dataUrl) {
@@ -31,15 +44,27 @@ function blobToDataUrl(blob) {
   });
 }
 
-async function apiJson(path, options = {}) {
-  const response = await fetch(path, {
+function buildHeaders(syncKey, headers = {}) {
+  const out = { ...headers };
+  if (syncKey) out['x-sync-key'] = syncKey;
+  return out;
+}
+
+async function apiJson(path, options = {}, syncKey = '') {
+  const requestHeaders = buildHeaders(syncKey, options.headers || {});
+  const requestOptions = {
     credentials: 'same-origin',
     ...options,
-    headers: {
+    headers: requestHeaders,
+  };
+  if (options.body && !requestHeaders['content-type']) {
+    requestOptions.headers = {
+      ...requestOptions.headers,
       'content-type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
+    };
+  }
+
+  const response = await fetch(path, requestOptions);
 
   let data = null;
   try {
@@ -74,14 +99,6 @@ function renderCloudMeta($, meta) {
 function getLocalSyncLabel(storage, key, formatDateTime, getSyncMetaIso) {
   const iso = getSyncMetaIso(storage, key);
   return formatDateTime(iso) || 'Never';
-}
-
-function setButtonsDisabled($, disabled) {
-  const ids = ['cloud-pull', 'cloud-push', 'cloud-signout'];
-  for (const id of ids) {
-    const el = $(id);
-    if (el) el.disabled = disabled;
-  }
 }
 
 function setCloudMessage($, message, isError = false) {
@@ -127,26 +144,25 @@ async function buildSnapshotPayload(exportData) {
     items.push(next);
   }
 
-  const snapshot = {
-    version: 1,
-    bins: exportData.bins || [],
-    items,
-    exportedAt: new Date().toISOString(),
-  };
-
   return {
-    snapshot,
+    snapshot: {
+      version: 1,
+      bins: exportData.bins || [],
+      items,
+      exportedAt: new Date().toISOString(),
+    },
     photos: [...photosByHash.values()],
   };
 }
 
-async function fetchPhotoDataUrlsByHash(hashes) {
+async function fetchPhotoDataUrlsByHash(hashes, syncKey) {
   const uniqueHashes = [...new Set(hashes.filter(Boolean))];
   const map = new Map();
 
   for (const hash of uniqueHashes) {
     const response = await fetch(`/api/sync/photo?hash=${encodeURIComponent(hash)}`, {
       credentials: 'same-origin',
+      headers: buildHeaders(syncKey),
     });
     if (!response.ok) continue;
     const blob = await response.blob();
@@ -172,112 +188,98 @@ function createCloudSyncManager(options) {
     prepareImportData,
   } = options;
 
-  let user = null;
-  let googleClientId = '';
+  let syncKey = '';
   let cloudMeta = null;
-  let googleInitAttempted = false;
+  let busy = false;
 
-  async function refreshSession() {
-    const me = await apiJson('/api/auth/me', { method: 'GET' });
-    user = me.user || null;
+  function updateUiState() {
     const statusEl = $('cloud-auth-status');
     const detailsEl = $('cloud-user-details');
-    const googleBtnWrap = $('cloud-google-button');
-    const signOutBtn = $('cloud-signout');
-
-    if (statusEl) statusEl.textContent = user ? 'Signed in' : 'Signed out';
-    if (detailsEl) {
-      detailsEl.textContent = user ? `${user.email}${user.name ? ` (${user.name})` : ''}` : 'Use Google to sign in.';
-    }
-    if (googleBtnWrap) googleBtnWrap.style.display = user ? 'none' : 'block';
-    if (signOutBtn) signOutBtn.style.display = user ? 'inline-block' : 'none';
-
+    const inputEl = $('cloud-sync-key');
+    const connectBtn = $('cloud-connect-key');
+    const clearBtn = $('cloud-clear-key');
     const pushBtn = $('cloud-push');
     const pullBtn = $('cloud-pull');
-    if (pushBtn) pushBtn.disabled = !user;
-    if (pullBtn) pullBtn.disabled = !user;
+
+    const connected = Boolean(syncKey);
+    if (statusEl) statusEl.textContent = connected ? 'Connected' : 'Not connected';
+    if (detailsEl) detailsEl.textContent = connected
+      ? `Sync key loaded (${syncKeyHint(syncKey)}).`
+      : 'Enter a sync key (8+ chars) used on all devices.';
+
+    if (inputEl) inputEl.value = connected ? syncKey : '';
+    if (connectBtn) connectBtn.disabled = busy;
+    if (clearBtn) clearBtn.disabled = busy || !connected;
+    if (pushBtn) pushBtn.disabled = busy || !connected;
+    if (pullBtn) pullBtn.disabled = busy || !connected;
+  }
+
+  function loadStoredKey() {
+    syncKey = normalizeSyncKey(localStorage.getItem(SYNC_KEY_STORAGE) || '');
+    if (!syncKey) localStorage.removeItem(SYNC_KEY_STORAGE);
+  }
+
+  function saveKey(value) {
+    const normalized = normalizeSyncKey(value);
+    if (!normalized) return false;
+    syncKey = normalized;
+    localStorage.setItem(SYNC_KEY_STORAGE, normalized);
+    return true;
+  }
+
+  function clearKey() {
+    syncKey = '';
+    localStorage.removeItem(SYNC_KEY_STORAGE);
+    cloudMeta = null;
+    renderCloudMeta($, cloudMeta);
   }
 
   async function refreshCloudMeta() {
-    if (!user) {
+    if (!syncKey) {
       cloudMeta = null;
       renderCloudMeta($, cloudMeta);
       return;
     }
 
-    const result = await apiJson('/api/sync/meta', { method: 'GET' });
+    const result = await apiJson('/api/sync/meta', { method: 'GET' }, syncKey);
     cloudMeta = result.meta || null;
     renderCloudMeta($, cloudMeta);
   }
 
-  async function handleGoogleCredential(credentialResponse) {
-    try {
-      setCloudMessage($, 'Signing in...');
-      await apiJson('/api/auth/google', {
-        method: 'POST',
-        body: JSON.stringify({ credential: credentialResponse.credential }),
-      });
-      await refreshSession();
-      await refreshCloudMeta();
-      setCloudMessage($, 'Signed in.');
-      showToast('Signed in to cloud sync', 'success');
-    } catch (error) {
-      setCloudMessage($, error.message || 'Sign-in failed.', true);
-      showToast(`Cloud sign-in failed: ${error.message}`, 'error');
-    }
-  }
-
-  async function initGoogleButton() {
-    if (googleInitAttempted) return;
-    googleInitAttempted = true;
-    try {
-      const cfg = await apiJson('/api/auth/config', { method: 'GET' });
-      googleClientId = cfg.googleClientId || '';
-      if (!googleClientId) {
-        setCloudMessage($, 'Google sign-in is not configured on the server.');
-        return;
-      }
-
-      if (!window.google || !window.google.accounts || !window.google.accounts.id) {
-        setCloudMessage($, 'Google sign-in library failed to load.', true);
-        return;
-      }
-
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: handleGoogleCredential,
-      });
-
-      const buttonEl = $('cloud-google-button');
-      if (!buttonEl) return;
-      buttonEl.innerHTML = '';
-      window.google.accounts.id.renderButton(buttonEl, {
-        theme: 'outline',
-        size: 'large',
-        text: 'signin_with',
-        shape: 'rectangular',
-        width: 240,
-      });
-    } catch (error) {
-      setCloudMessage($, error.message || 'Cloud auth config unavailable.', true);
-    }
-  }
-
-  async function signOut() {
-    await apiJson('/api/auth/logout', { method: 'POST', body: '{}' });
-    await refreshSession();
-    await refreshCloudMeta();
-    setCloudMessage($, 'Signed out.');
-    showToast('Signed out of cloud sync', 'success');
-  }
-
-  async function pushToCloud() {
-    if (!user) {
-      showToast('Sign in before pushing to cloud', 'error');
+  async function connectWithInput() {
+    const inputEl = $('cloud-sync-key');
+    const raw = inputEl ? inputEl.value : '';
+    if (!saveKey(raw)) {
+      setCloudMessage($, 'Sync key must be 8-256 characters.', true);
+      updateUiState();
       return;
     }
 
-    setButtonsDisabled($, true);
+    busy = true;
+    updateUiState();
+    setCloudMessage($, 'Connecting...');
+    try {
+      await refreshCloudMeta();
+      setCloudMessage($, 'Sync key connected.');
+      showToast('Cloud sync key connected', 'success');
+    } catch (error) {
+      clearKey();
+      setCloudMessage($, error.message || 'Failed to connect sync key.', true);
+      showToast(`Cloud sync key failed: ${error.message}`, 'error');
+    } finally {
+      busy = false;
+      updateUiState();
+    }
+  }
+
+  async function pushToCloud() {
+    if (!syncKey) {
+      showToast('Enter a sync key before pushing', 'error');
+      return;
+    }
+
+    busy = true;
+    updateUiState();
     setCloudMessage($, 'Preparing snapshot...');
 
     try {
@@ -290,7 +292,7 @@ function createCloudSyncManager(options) {
         const missingResult = await apiJson('/api/sync/photos-missing', {
           method: 'POST',
           body: JSON.stringify({ hashes }),
-        });
+        }, syncKey);
 
         const missingSet = new Set(missingResult.missing || []);
         const missingPhotos = payload.photos.filter((p) => missingSet.has(p.hash));
@@ -300,7 +302,7 @@ function createCloudSyncManager(options) {
           await apiJson('/api/sync/photo-upload', {
             method: 'POST',
             body: JSON.stringify(photo),
-          });
+          }, syncKey);
         }
       }
 
@@ -322,7 +324,7 @@ function createCloudSyncManager(options) {
       const result = await apiJson('/api/sync/push', {
         method: 'POST',
         body: JSON.stringify({ snapshot: payload.snapshot }),
-      });
+      }, syncKey);
 
       setSyncMetaIso(localStorage, syncMetaKeys.lastCloudPushAt, new Date().toISOString());
       refreshSyncStatus();
@@ -335,15 +337,14 @@ function createCloudSyncManager(options) {
       setCloudMessage($, error.message || 'Push failed.', true);
       showToast(`Cloud push failed: ${error.message}`, 'error');
     } finally {
-      setButtonsDisabled($, false);
-      const signOutBtn = $('cloud-signout');
-      if (signOutBtn) signOutBtn.disabled = false;
+      busy = false;
+      updateUiState();
     }
   }
 
   async function pullFromCloud() {
-    if (!user) {
-      showToast('Sign in before pulling from cloud', 'error');
+    if (!syncKey) {
+      showToast('Enter a sync key before pulling', 'error');
       return;
     }
 
@@ -354,13 +355,14 @@ function createCloudSyncManager(options) {
     });
     if (!confirmed) return;
 
-    setButtonsDisabled($, true);
+    busy = true;
+    updateUiState();
     setCloudMessage($, 'Downloading snapshot...');
 
     try {
-      const pulled = await apiJson('/api/sync/pull', { method: 'GET' });
+      const pulled = await apiJson('/api/sync/pull', { method: 'GET' }, syncKey);
       if (!pulled.hasSnapshot || !pulled.snapshot) {
-        setCloudMessage($, 'No cloud snapshot found for this account.');
+        setCloudMessage($, 'No cloud snapshot found for this sync key.');
         showToast('No cloud snapshot found', 'error');
         return;
       }
@@ -373,7 +375,7 @@ function createCloudSyncManager(options) {
       )];
 
       setCloudMessage($, `Downloading ${photoHashes.length} photo(s)...`);
-      const photoMap = await fetchPhotoDataUrlsByHash(photoHashes);
+      const photoMap = await fetchPhotoDataUrlsByHash(photoHashes, syncKey);
 
       const hydratedItems = (snapshot.items || []).map((item) => {
         const next = { ...item };
@@ -417,48 +419,46 @@ function createCloudSyncManager(options) {
       setCloudMessage($, error.message || 'Pull failed.', true);
       showToast(`Cloud pull failed: ${error.message}`, 'error');
     } finally {
-      setButtonsDisabled($, false);
-      const signOutBtn = $('cloud-signout');
-      if (signOutBtn) signOutBtn.disabled = false;
+      busy = false;
+      updateUiState();
     }
   }
 
   async function refresh() {
+    loadStoredKey();
+    updateUiState();
+    updateLocalCloudLabels($, localStorage, syncMetaKeys, formatDateTime, getSyncMetaIso);
+
+    if (!syncKey) {
+      renderCloudMeta($, null);
+      return;
+    }
+
     try {
-      await refreshSession();
       await refreshCloudMeta();
-      updateLocalCloudLabels($, localStorage, syncMetaKeys, formatDateTime, getSyncMetaIso);
     } catch (error) {
       setCloudMessage($, error.message || 'Cloud sync unavailable.', true);
     }
   }
 
   async function init() {
-    const signOutBtn = $('cloud-signout');
+    const connectBtn = $('cloud-connect-key');
+    const clearBtn = $('cloud-clear-key');
     const pullBtn = $('cloud-pull');
     const pushBtn = $('cloud-push');
 
-    if (signOutBtn) {
-      signOutBtn.addEventListener('click', async () => {
-        try {
-          await signOut();
-        } catch (error) {
-          setCloudMessage($, error.message || 'Sign-out failed.', true);
-          showToast(`Sign-out failed: ${error.message}`, 'error');
-        }
+    if (connectBtn) connectBtn.addEventListener('click', () => connectWithInput());
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        clearKey();
+        updateUiState();
+        setCloudMessage($, 'Sync key cleared.');
       });
     }
-
-    if (pullBtn) {
-      pullBtn.addEventListener('click', () => pullFromCloud());
-    }
-
-    if (pushBtn) {
-      pushBtn.addEventListener('click', () => pushToCloud());
-    }
+    if (pullBtn) pullBtn.addEventListener('click', () => pullFromCloud());
+    if (pushBtn) pushBtn.addEventListener('click', () => pushToCloud());
 
     await refresh();
-    await initGoogleButton();
   }
 
   return {

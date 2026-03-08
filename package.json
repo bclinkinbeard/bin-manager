@@ -6,7 +6,6 @@
     "test": "node --test tests/node/*.test.js"
   },
   "dependencies": {
-    "@vercel/blob": "^0.27.0",
-    "google-auth-library": "^10.5.0"
+    "@vercel/blob": "^0.27.0"
   }
 }

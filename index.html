@@ -16,7 +16,6 @@
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -192,17 +191,23 @@
         <div class="sync-status-row"><span>Last cloud push</span><span id="sync-last-cloud-push">Never</span></div>
       </div>
       <div class="sync-panel" style="margin-top:12px;">
-        <h3 class="sync-panel-title">Cloud Sync (Account)</h3>
-        <div class="sync-status-row"><span>Status</span><span id="cloud-auth-status">Checking...</span></div>
+        <h3 class="sync-panel-title">Cloud Sync (Sync Key)</h3>
+        <div class="sync-status-row"><span>Status</span><span id="cloud-auth-status">Not connected</span></div>
         <div class="sync-status-row"><span>Cloud version</span><span id="cloud-snapshot-version">None</span></div>
         <div class="sync-status-row"><span>Cloud updated</span><span id="cloud-snapshot-updated">Never</span></div>
-        <div class="data-warning" id="cloud-user-details" style="margin-top:8px;text-align:left;">Use Google to sign in.</div>
-        <div id="cloud-google-button" style="margin-top:10px;"></div>
+        <div class="data-warning" id="cloud-user-details" style="margin-top:8px;text-align:left;">Enter a sync key (8+ chars) used on all devices.</div>
+        <div class="form-group" style="margin-top:10px;">
+          <label for="cloud-sync-key">Sync Key</label>
+          <input type="password" id="cloud-sync-key" placeholder="Enter shared sync key">
+        </div>
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="btn btn-secondary" id="cloud-connect-key">Connect Key</button>
+          <button class="btn btn-secondary" id="cloud-clear-key">Clear Key</button>
+        </div>
         <div class="btn-row" style="margin-top:10px;">
           <button class="btn btn-secondary" id="cloud-pull" disabled>Pull From Cloud</button>
           <button class="btn btn-primary" id="cloud-push" disabled>Push To Cloud</button>
         </div>
-        <button class="btn btn-secondary btn-block" id="cloud-signout" style="display:none;margin-top:10px;">Sign Out</button>
         <p class="data-warning" id="cloud-sync-message" style="text-align:left;margin-top:8px;color:var(--text-dim);">
           Cloud sync uses full snapshot upload/download (excluding photos, which are deduplicated by hash).
         </p>

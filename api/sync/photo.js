@@ -1,5 +1,5 @@
 import { badRequest, serverError } from '../../server/json.js';
-import { requireUser } from '../../server/session.js';
+import { requireSyncNamespace } from '../../server/sync-key.js';
 import { buildPhotoPath, getBinary } from '../../server/storage.js';
 
 function normalizeHash(value) {
@@ -10,14 +10,14 @@ function normalizeHash(value) {
 
 export async function GET(request) {
   try {
-    const { user, response } = requireUser(request);
+    const { namespace, response } = requireSyncNamespace(request);
     if (response) return response;
 
     const url = new URL(request.url);
     const hash = normalizeHash(url.searchParams.get('hash'));
     if (!hash) return badRequest('Invalid photo hash.');
 
-    const binary = await getBinary(buildPhotoPath(user.id, hash));
+    const binary = await getBinary(buildPhotoPath(namespace, hash));
     if (!binary) {
       return new Response('Not Found', { status: 404 });
     }

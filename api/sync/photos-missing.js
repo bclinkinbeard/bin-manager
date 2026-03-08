@@ -1,5 +1,5 @@
 import { badRequest, jsonResponse, readJson, serverError } from '../../server/json.js';
-import { requireUser } from '../../server/session.js';
+import { requireSyncNamespace } from '../../server/sync-key.js';
 import { buildPhotoPath, photoExists } from '../../server/storage.js';
 
 function normalizeHash(value) {
@@ -10,7 +10,7 @@ function normalizeHash(value) {
 
 export async function POST(request) {
   try {
-    const { user, response } = requireUser(request);
+    const { namespace, response } = requireSyncNamespace(request);
     if (response) return response;
 
     const body = await readJson(request);
@@ -21,7 +21,7 @@ export async function POST(request) {
     const missing = [];
 
     for (const hash of uniqueHashes) {
-      const exists = await photoExists(buildPhotoPath(user.id, hash));
+      const exists = await photoExists(buildPhotoPath(namespace, hash));
       if (!exists) missing.push(hash);
     }
 

@@ -1,13 +1,5 @@
 import { get, head, put } from '@vercel/blob';
 
-function requireEnv(name) {
-  const value = process.env[name];
-  if (!value || !String(value).trim()) {
-    throw new Error(`Missing environment variable: ${name}`);
-  }
-  return value;
-}
-
 function sanitizeUserId(userId) {
   return String(userId || '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
@@ -123,7 +115,6 @@ function sanitizeSnapshot(snapshot) {
 }
 
 export {
-  requireEnv,
   sanitizeUserId,
   buildMetaPath,
   buildSnapshotPath,
