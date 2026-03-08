@@ -12,12 +12,12 @@ test('validateImportData rejects malformed root object', () => {
 });
 
 test('validateImportData rejects invalid bins array', () => {
-  assert.equal(validateImportData({ bins: {} }), false);
+  assert.equal(validateImportData({ bins: { a: { id: 'BIN-001' } }, items: [] }), true);
   assert.equal(validateImportData({ bins: [{ nope: 1 }] }), false);
 });
 
 test('validateImportData rejects invalid items array', () => {
-  assert.equal(validateImportData({ items: {} }), false);
+  assert.equal(validateImportData({ bins: [{ id: 'BIN-1' }], items: { i1: { id: 'i1', binId: 'BIN-1' } } }), true);
   assert.equal(validateImportData({ items: [{ id: 'i1' }] }), false);
   assert.equal(validateImportData({ items: [{ binId: 'BIN-1' }] }), false);
 });
@@ -31,13 +31,14 @@ test('prepareImportData rejects duplicate IDs', () => {
   assert.match(result.errors.join(' '), /Duplicate bin id/);
 });
 
-test('prepareImportData rejects orphaned items', () => {
+test('prepareImportData auto-creates bins for orphaned items', () => {
   const result = prepareImportData({
     bins: [{ id: 'BIN-001' }],
     items: [{ id: 'i1', binId: 'BIN-999' }],
   });
-  assert.equal(result.ok, false);
-  assert.match(result.errors.join(' '), /orphaned item/i);
+  assert.equal(result.ok, true);
+  assert.equal(result.data.bins.some((bin) => bin.id === 'BIN-999'), true);
+  assert.match(result.warnings.join(' '), /placeholder bin/i);
 });
 
 test('prepareImportData migrates missing version payloads', () => {
@@ -49,4 +50,14 @@ test('prepareImportData migrates missing version payloads', () => {
   assert.equal(result.data.version, 1);
   assert.deepEqual(result.data.items[0].tags, ['a']);
   assert.ok(result.warnings.length > 0);
+});
+
+test('prepareImportData preserves false-like archived string values', () => {
+  const result = prepareImportData({
+    version: 1,
+    bins: [{ id: 'BIN-001', archived: 'false' }],
+    items: [],
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.data.bins[0].archived, false);
 });

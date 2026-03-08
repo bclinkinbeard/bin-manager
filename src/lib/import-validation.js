@@ -19,6 +19,17 @@ function normalizeTags(tags) {
   )];
 }
 
+function normalizeBoolean(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'y') return true;
+    if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'n' || normalized === '') return false;
+  }
+  return fallback;
+}
+
 function normalizeBin(bin, nowIso) {
   return {
     id: String(bin.id).trim(),
@@ -26,7 +37,7 @@ function normalizeBin(bin, nowIso) {
     location: typeof bin.location === 'string' ? bin.location.trim() : '',
     description: typeof bin.description === 'string' ? bin.description.trim() : '',
     createdAt: normalizeIso(bin.createdAt, nowIso),
-    archived: Boolean(bin.archived),
+    archived: normalizeBoolean(bin.archived, false),
   };
 }
 
@@ -105,9 +116,24 @@ function prepareImportData(rawData) {
     normalizedItems.push(normalized);
   }
 
-  const orphaned = normalizedItems.filter((item) => !binIds.has(item.binId));
-  if (orphaned.length > 0) {
-    errors.push(`Found ${orphaned.length} orphaned item(s) that reference missing bins.`);
+  const missingBinIds = [...new Set(
+    normalizedItems
+      .map((item) => item.binId)
+      .filter((binId) => !binIds.has(binId))
+  )];
+  if (missingBinIds.length > 0) {
+    for (const missingBinId of missingBinIds) {
+      binIds.add(missingBinId);
+      normalizedBins.push({
+        id: missingBinId,
+        name: `Recovered ${missingBinId}`,
+        location: '',
+        description: 'Auto-created during import to preserve item references.',
+        createdAt: nowIso,
+        archived: false,
+      });
+    }
+    warnings.push(`Created ${missingBinIds.length} placeholder bin(s) for orphaned items.`);
   }
 
   if (errors.length > 0) {
