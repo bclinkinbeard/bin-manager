@@ -4,7 +4,7 @@
 
 Current state:
 - Local-first IndexedDB app remains fully offline-capable.
-- Cloud sync MVP is implemented with Vercel API routes + private Vercel Blob storage.
+- Cloud sync MVP is implemented with Vercel API routes + Vercel Blob storage.
 - Cloud access uses a shared Sync Key (no OAuth provider setup).
 - Snapshot sync excludes inline image payloads; photos are deduped by hash.
 

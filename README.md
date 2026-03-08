@@ -31,9 +31,9 @@ If cloud env vars are missing, local-only mode still works.
 
 ### Cloud (Vercel Blob)
 
-- private per-key snapshot JSON
-- private per-key photos deduplicated by SHA-256 hash
-- private per-key pointer metadata (`latest.json`)
+- per-key namespaced snapshot JSON
+- per-key namespaced photos deduplicated by SHA-256 hash
+- per-key namespaced pointer metadata (`latest.json`)
 
 Snapshots exclude inline photo data.
 

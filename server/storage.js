@@ -1,4 +1,4 @@
-import { get, head, put } from '@vercel/blob';
+import { list, put } from '@vercel/blob';
 
 function sanitizeUserId(userId) {
   return String(userId || '').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -38,8 +38,14 @@ function isNotFoundError(error) {
 
 async function getJson(pathname) {
   try {
-    const result = await get(pathname, { access: 'private' });
-    const text = await new Response(result.stream).text();
+    const blob = await findBlobByPathname(pathname);
+    if (!blob) return null;
+    const response = await fetch(blob.downloadUrl);
+    if (!response.ok) {
+      if (response.status === 404) return null;
+      throw new Error(`Blob fetch failed (${response.status}).`);
+    }
+    const text = await response.text();
     return JSON.parse(text);
   } catch (error) {
     if (isNotFoundError(error)) return null;
@@ -50,7 +56,7 @@ async function getJson(pathname) {
 async function putJson(pathname, data) {
   const body = JSON.stringify(data);
   const result = await put(pathname, body, {
-    access: 'private',
+    access: 'public',
     addRandomSuffix: false,
     allowOverwrite: true,
     contentType: 'application/json; charset=utf-8',
@@ -59,13 +65,8 @@ async function putJson(pathname, data) {
 }
 
 async function photoExists(pathname) {
-  try {
-    await head(pathname, { access: 'private' });
-    return true;
-  } catch (error) {
-    if (isNotFoundError(error)) return false;
-    throw error;
-  }
+  const blob = await findBlobByPathname(pathname);
+  return Boolean(blob);
 }
 
 function dataUrlToBytes(dataUrl) {
@@ -82,7 +83,7 @@ async function putPhotoFromDataUrl(pathname, dataUrl, explicitMimeType) {
   const { mimeType: parsedMimeType, buffer } = dataUrlToBytes(dataUrl);
   const contentType = explicitMimeType || parsedMimeType || 'application/octet-stream';
   return put(pathname, buffer, {
-    access: 'private',
+    access: 'public',
     addRandomSuffix: false,
     allowOverwrite: false,
     contentType,
@@ -91,15 +92,29 @@ async function putPhotoFromDataUrl(pathname, dataUrl, explicitMimeType) {
 
 async function getBinary(pathname) {
   try {
-    const result = await get(pathname, { access: 'private' });
+    const blob = await findBlobByPathname(pathname);
+    if (!blob) return null;
+    const result = await fetch(blob.downloadUrl);
+    if (!result.ok) {
+      if (result.status === 404) return null;
+      throw new Error(`Blob fetch failed (${result.status}).`);
+    }
     return {
-      contentType: result.contentType || 'application/octet-stream',
-      stream: result.stream,
+      contentType: result.headers.get('content-type') || 'application/octet-stream',
+      stream: result.body,
     };
   } catch (error) {
     if (isNotFoundError(error)) return null;
     throw error;
   }
+}
+
+async function findBlobByPathname(pathname) {
+  const result = await list({
+    prefix: pathname,
+    limit: 25,
+  });
+  return result.blobs.find((blob) => blob.pathname === pathname) || null;
 }
 
 function sanitizeSnapshot(snapshot) {

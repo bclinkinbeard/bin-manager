@@ -5,7 +5,7 @@
 Implemented:
 - Sync Key connect/clear in Data view
 - Cloud push/pull actions
-- Per-key private snapshot storage
+- Per-key namespaced snapshot storage
 - Per-key photo dedupe by SHA-256 hash
 
 Current behavior:
