@@ -330,6 +330,21 @@ body {
   white-space: nowrap;
 }
 
+.tag-chip-btn {
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.tag-chip-btn:hover {
+  background: #3a3a3a;
+}
+
+.tag-chip-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .item-card .item-date {
   font-size: 11px;
   color: var(--text-dim);
@@ -367,6 +382,12 @@ body {
 }
 
 .item-card .item-delete:hover { opacity: 1; }
+
+.tag-results-subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
 
 /* ── Forms ── */
 
