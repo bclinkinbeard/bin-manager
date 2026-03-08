@@ -45,6 +45,9 @@ const SYNC_META_KEYS = {
   lastImportAt: 'bmLastImportAt',
   lastImportedFileExportedAt: 'bmLastImportedFileExportedAt',
 };
+let currentTag = null;
+let isApplyingRoute = false;
+let ignoreNextHashChange = false;
 
 // ── Custom Confirmation Modal ──
 
@@ -72,7 +75,8 @@ function confirmAction({ title, message, confirmLabel, danger }) {
 
 // ── Navigation ──
 
-function showView(name) {
+function showView(name, options = {}) {
+  const { syncUrl = true, replaceUrl = false } = options;
   Object.values(views).forEach((v) => v.classList.remove('active'));
   views[name].classList.add('active');
 
@@ -95,7 +99,192 @@ function showView(name) {
   if (focusable) {
     requestAnimationFrame(() => focusable.focus());
   }
+
+  if (syncUrl && !isApplyingRoute) {
+    syncRouteToUrl({ replace: replaceUrl });
+  }
 }
+
+function routeForCurrentView() {
+  const activeViewName = Object.entries(views).find(([, el]) => el.classList.contains('active'))?.[0] || 'search';
+  const params = new URLSearchParams();
+
+  if (activeViewName === 'search') {
+    const q = $('search-input').value.trim();
+    if (q) params.set('q', q);
+    if ($('search-show-archived').checked) params.set('archived', '1');
+    const query = params.toString();
+    return query ? `search?${query}` : 'search';
+  }
+
+  if (activeViewName === 'scan') return 'scan';
+  if (activeViewName === 'labels') return 'labels';
+  if (activeViewName === 'data') return 'data';
+
+  if (activeViewName === 'bin') {
+    return currentBinId ? `bin/${encodeURIComponent(currentBinId)}` : 'search';
+  }
+
+  if (activeViewName === 'tag') {
+    if (!currentTag) return 'search';
+    if (currentTagOriginBinId) params.set('origin', currentTagOriginBinId);
+    const query = params.toString();
+    return query
+      ? `tag/${encodeURIComponent(currentTag)}?${query}`
+      : `tag/${encodeURIComponent(currentTag)}`;
+  }
+
+  if (activeViewName === 'binForm') {
+    const id = $('bin-form-id').value.trim();
+    if (!id) return 'search';
+    if (editingBin) params.set('edit', '1');
+    const query = params.toString();
+    return query
+      ? `bin-form/${encodeURIComponent(id)}?${query}`
+      : `bin-form/${encodeURIComponent(id)}`;
+  }
+
+  if (activeViewName === 'itemForm') {
+    if (currentEditItemId) return `item-form/edit/${encodeURIComponent(currentEditItemId)}`;
+    const binId = $('item-form-bin').value || currentBinId;
+    if (binId) params.set('bin', binId);
+    const query = params.toString();
+    return query ? `item-form?${query}` : 'item-form';
+  }
+
+  if (activeViewName === 'multiCrop') {
+    if (currentBinId) params.set('bin', currentBinId);
+    const query = params.toString();
+    return query ? `multi-crop?${query}` : 'multi-crop';
+  }
+
+  return 'search';
+}
+
+function syncRouteToUrl({ replace = false } = {}) {
+  const hash = `#${routeForCurrentView()}`;
+  if (window.location.hash === hash) return;
+
+  if (replace) {
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`);
+    return;
+  }
+
+  ignoreNextHashChange = true;
+  window.location.hash = hash;
+}
+
+function parseRouteFromHash() {
+  const raw = window.location.hash.replace(/^#/, '');
+  if (!raw) return { view: 'search', q: '', archived: false };
+
+  const [pathPart, queryPart = ''] = raw.split('?');
+  const path = pathPart.replace(/^\/+/, '');
+  const parts = path.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
+  const params = new URLSearchParams(queryPart);
+
+  if (parts.length === 0 || parts[0] === 'search') {
+    return {
+      view: 'search',
+      q: params.get('q') || '',
+      archived: params.get('archived') === '1',
+    };
+  }
+
+  if (parts[0] === 'scan') return { view: 'scan' };
+  if (parts[0] === 'labels') return { view: 'labels' };
+  if (parts[0] === 'data') return { view: 'data' };
+  if (parts[0] === 'bin') return { view: 'bin', binId: parts[1] || '' };
+  if (parts[0] === 'tag') return { view: 'tag', tag: parts[1] || '', originBinId: params.get('origin') || null };
+  if (parts[0] === 'bin-form') return { view: 'binForm', binId: parts[1] || '', edit: params.get('edit') === '1' };
+
+  if (parts[0] === 'item-form') {
+    if (parts[1] === 'edit' && parts[2]) {
+      return { view: 'itemForm', itemId: parts[2] };
+    }
+    return { view: 'itemForm', binId: params.get('bin') || '' };
+  }
+
+  if (parts[0] === 'multi-crop') {
+    return { view: 'multiCrop', binId: params.get('bin') || '' };
+  }
+
+  return { view: 'search', q: '', archived: false };
+}
+
+async function applyRouteFromHash() {
+  const route = parseRouteFromHash();
+  isApplyingRoute = true;
+
+  try {
+    if (route.view === 'scan') {
+      showView('scan', { syncUrl: false });
+      await startScanner();
+      return;
+    }
+
+    if (route.view === 'labels') {
+      showView('labels', { syncUrl: false });
+      await renderLabels();
+      return;
+    }
+
+    if (route.view === 'data') {
+      showView('data', { syncUrl: false });
+      return;
+    }
+
+    if (route.view === 'bin' && route.binId) {
+      await openBin(route.binId, { syncUrl: false });
+      return;
+    }
+
+    if (route.view === 'tag' && route.tag) {
+      await openTagResults(route.tag, route.originBinId, { syncUrl: false });
+      return;
+    }
+
+    if (route.view === 'binForm' && route.binId) {
+      const existingBin = route.edit ? await db.getBin(route.binId) : null;
+      openBinForm(route.binId, existingBin, { syncUrl: false });
+      return;
+    }
+
+    if (route.view === 'itemForm') {
+      if (route.itemId) {
+        await openEditItemForm(route.itemId, { syncUrl: false });
+        return;
+      }
+      await openAddItemForm(route.binId || null, { syncUrl: false });
+      return;
+    }
+
+    if (route.view === 'multiCrop') {
+      if (route.binId) {
+        await openBin(route.binId, { syncUrl: false });
+        return;
+      }
+      showView('search', { syncUrl: false });
+      await refreshSearch();
+      return;
+    }
+
+    $('search-input').value = route.q || '';
+    $('search-show-archived').checked = !!route.archived;
+    showView('search', { syncUrl: false });
+    await refreshSearch();
+  } finally {
+    isApplyingRoute = false;
+  }
+}
+
+window.addEventListener('hashchange', () => {
+  if (ignoreNextHashChange) {
+    ignoreNextHashChange = false;
+    return;
+  }
+  applyRouteFromHash();
+});
 
 navBtns.forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -272,6 +461,10 @@ async function refreshSearch() {
 
   renderSearchResults(results);
   await refreshStats();
+
+  if (!isApplyingRoute && views.search.classList.contains('active')) {
+    syncRouteToUrl({ replace: true });
+  }
 }
 
 function renderSearchResults(results) {
@@ -348,11 +541,12 @@ async function onQrScanned(text) {
 
 // ── Bin detail ──
 
-async function openBin(id) {
+async function openBin(id, options = {}) {
+  const { syncUrl = true } = options;
   currentBinId = id;
   const bin = await db.getBin(id);
   if (!bin) {
-    openBinForm(id);
+    openBinForm(id, null, { syncUrl });
     return;
   }
 
@@ -371,7 +565,7 @@ async function openBin(id) {
   currentBinItems = items;
   itemsPage = 1;
   renderBinItems();
-  showView('bin');
+  showView('bin', { syncUrl });
 }
 
 function sortItems(items) {
@@ -476,9 +670,11 @@ function renderBinItems() {
   }
 }
 
-async function openTagResults(tag, originBinId) {
+async function openTagResults(tag, originBinId, options = {}) {
+  const { syncUrl = true } = options;
   const normalizedTag = String(tag || '').trim().toLowerCase();
   if (!normalizedTag) return;
+  currentTag = normalizedTag;
   currentTagOriginBinId = originBinId || null;
 
   const [items, bins] = await Promise.all([
@@ -494,7 +690,7 @@ async function openTagResults(tag, originBinId) {
   const container = $('tag-items-list');
   if (sortedItems.length === 0) {
     container.innerHTML = '<div class="empty-state">No items found for this tag.</div>';
-    showView('tag');
+    showView('tag', { syncUrl });
     return;
   }
 
@@ -506,7 +702,7 @@ async function openTagResults(tag, originBinId) {
         ${item.photo && item.photo.startsWith('data:image/') ? `<img class="item-photo" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}">` : ''}
         <div class="item-info">
           <div class="item-desc">${esc(item.description)}</div>
-          ${(item.tags && item.tags.length) ? `<div class="item-tags">${item.tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join('')}</div>` : ''}
+          ${(item.tags && item.tags.length) ? `<div class="item-tags">${item.tags.map(t => `<button type="button" class="tag-chip tag-chip-btn" data-tag="${escAttr(t)}">${esc(t)}</button>`).join('')}</div>` : ''}
           <div class="item-date">${esc(item.binId)}${bin && bin.name ? ` - ${esc(bin.name)}` : ''} | ${formatDate(item.addedAt)}</div>
         </div>
         <div class="item-actions">
@@ -522,7 +718,14 @@ async function openTagResults(tag, originBinId) {
     });
   });
 
-  showView('tag');
+  container.querySelectorAll('.tag-chip-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTagResults(btn.dataset.tag, currentTagOriginBinId);
+    });
+  });
+
+  showView('tag', { syncUrl });
 }
 
 $('tag-back').addEventListener('click', () => {
@@ -585,14 +788,15 @@ $('item-sort').addEventListener('change', (e) => {
 
 // ── Bin form ──
 
-function openBinForm(id, existingBin) {
+function openBinForm(id, existingBin, options = {}) {
+  const { syncUrl = true } = options;
   editingBin = existingBin || null;
   $('bin-form-id').value = id;
   $('bin-form-name').value = existingBin ? existingBin.name || '' : '';
   $('bin-form-location').value = existingBin ? existingBin.location || '' : '';
   $('bin-form-desc').value = existingBin ? existingBin.description || '' : '';
   $('bin-form-title').textContent = existingBin ? 'Edit Bin' : 'New Bin';
-  showView('binForm');
+  showView('binForm', { syncUrl });
 }
 
 $('bin-form-back').addEventListener('click', () => {
@@ -633,7 +837,8 @@ $('bin-form-save').addEventListener('click', async () => {
 
 // ── Item form ──
 
-async function openAddItemForm(preselectedBinId) {
+async function openAddItemForm(preselectedBinId, options = {}) {
+  const { syncUrl = true } = options;
   currentPhoto = null;
   currentEditItemId = null;
   $('item-form-desc').value = '';
@@ -641,7 +846,7 @@ async function openAddItemForm(preselectedBinId) {
   $('item-photo-preview').style.display = 'none';
   $('item-form-title').textContent = 'Add Item';
   await populateBinSelector(preselectedBinId);
-  showView('itemForm');
+  showView('itemForm', { syncUrl });
 }
 
 async function populateBinSelector(selectedBinId) {
@@ -665,7 +870,8 @@ $('search-add-item').addEventListener('click', async () => {
   openAddItemForm(null);
 });
 
-async function openEditItemForm(itemId) {
+async function openEditItemForm(itemId, options = {}) {
+  const { syncUrl = true } = options;
   const item = await db.getItem(itemId);
   if (!item) return;
   currentEditItemId = itemId;
@@ -680,7 +886,7 @@ async function openEditItemForm(itemId) {
   }
   $('item-form-title').textContent = 'Edit Item';
   await populateBinSelector(item.binId);
-  showView('itemForm');
+  showView('itemForm', { syncUrl });
 }
 
 $('item-form-back').addEventListener('click', () => {
@@ -771,8 +977,9 @@ $('bin-add-multi').addEventListener('click', () => {
   input.click();
 });
 
-function openMultiCropView() {
-  showView('multiCrop');
+function openMultiCropView(options = {}) {
+  const { syncUrl = true } = options;
+  showView('multiCrop', { syncUrl });
   $('multi-crop-hint').textContent = 'Draw rectangles around each item';
   $('multi-crop-shared-tags').value = '';
   renderMultiCropCanvas();
@@ -1295,7 +1502,12 @@ async function init() {
     }
     refreshSyncStatus();
     await refreshStats();
-    await refreshSearch();
+    if (window.location.hash) {
+      await applyRouteFromHash();
+    } else {
+      showView('search', { replaceUrl: true });
+      await refreshSearch();
+    }
   } catch (e) {
     document.body.innerHTML = `<div style="padding:40px;text-align:center;color:#e0e0e0;font-family:monospace;">
       <h2>Failed to initialize</h2>
