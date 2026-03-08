@@ -13,3 +13,31 @@ test('migrateImportData rejects unsupported versions', () => {
   assert.equal(result.ok, false);
   assert.match(result.errors[0], /Unsupported import version/);
 });
+
+test('migrateImportData accepts nested data payloads', () => {
+  const result = migrateImportData({
+    version: 1,
+    data: {
+      bins: [{ id: 'BIN-001' }],
+      items: [{ id: 'i1', binId: 'BIN-001' }],
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.data.bins.length, 1);
+  assert.equal(result.data.items.length, 1);
+});
+
+test('migrateImportData converts object maps to arrays', () => {
+  const result = migrateImportData({
+    bins: {
+      a: { id: 'BIN-001' },
+      b: { id: 'BIN-002' },
+    },
+    items: {
+      i1: { id: 'i1', binId: 'BIN-001' },
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.data.bins.length, 2);
+  assert.equal(result.data.items.length, 1);
+});

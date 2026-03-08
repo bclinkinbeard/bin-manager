@@ -105,9 +105,24 @@ function prepareImportData(rawData) {
     normalizedItems.push(normalized);
   }
 
-  const orphaned = normalizedItems.filter((item) => !binIds.has(item.binId));
-  if (orphaned.length > 0) {
-    errors.push(`Found ${orphaned.length} orphaned item(s) that reference missing bins.`);
+  const missingBinIds = [...new Set(
+    normalizedItems
+      .map((item) => item.binId)
+      .filter((binId) => !binIds.has(binId))
+  )];
+  if (missingBinIds.length > 0) {
+    for (const missingBinId of missingBinIds) {
+      binIds.add(missingBinId);
+      normalizedBins.push({
+        id: missingBinId,
+        name: `Recovered ${missingBinId}`,
+        location: '',
+        description: 'Auto-created during import to preserve item references.',
+        createdAt: nowIso,
+        archived: false,
+      });
+    }
+    warnings.push(`Created ${missingBinIds.length} placeholder bin(s) for orphaned items.`);
   }
 
   if (errors.length > 0) {
