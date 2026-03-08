@@ -145,20 +145,13 @@
       <button class="btn btn-primary btn-block" id="item-form-save">Save Item</button>
     </div>
 
-    <!-- Print labels view -->
-    <div id="view-labels" class="view">
-      <button class="btn-back" id="labels-back">&larr; Back</button>
-      <h2 style="font-size:16px;margin-bottom:16px;">Print QR Labels</h2>
-      <div class="print-controls">
-        <button class="btn btn-primary" id="labels-print">Print Labels</button>
-        <button class="btn btn-secondary" id="labels-create">+ Generate New Bins</button>
+    <!-- Bins view -->
+    <div id="view-bins" class="view">
+      <div class="bins-controls">
+        <button class="btn btn-primary" id="bins-add">+ Add Bin</button>
+        <button class="btn btn-secondary" id="bins-print">Print Labels</button>
       </div>
-      <div class="form-group print-controls" id="generate-controls" style="display:none;">
-        <input type="number" id="generate-count" min="1" max="100" value="10" style="width:80px;">
-        <button class="btn btn-primary" id="generate-go">Generate</button>
-        <button class="btn btn-secondary" id="generate-cancel">Cancel</button>
-      </div>
-      <div id="labels-grid" class="label-grid"></div>
+      <div id="bins-grid" class="label-grid"></div>
     </div>
 
     <!-- Multi-item photo crop view -->
@@ -251,9 +244,9 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       Scan
     </button>
-    <button class="nav-btn" data-view="labels">
+    <button class="nav-btn" data-view="bins">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="12" y2="15"/></svg>
-      Labels
+      Bins
     </button>
     <button class="nav-btn" data-view="data">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
