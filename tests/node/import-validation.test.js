@@ -61,3 +61,20 @@ test('prepareImportData preserves false-like archived string values', () => {
   assert.equal(result.ok, true);
   assert.equal(result.data.bins[0].archived, false);
 });
+
+test('prepareImportData keeps photo hash metadata for cloud snapshots', () => {
+  const result = prepareImportData({
+    version: 1,
+    bins: [{ id: 'BIN-001' }],
+    items: [{
+      id: 'i1',
+      binId: 'BIN-001',
+      photoHash: 'A'.repeat(64),
+      photoMimeType: 'IMAGE/JPEG',
+    }],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.items[0].photoHash, 'a'.repeat(64));
+  assert.equal(result.data.items[0].photoMimeType, 'image/jpeg');
+});

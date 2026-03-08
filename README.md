@@ -2,58 +2,113 @@
 
 A Progressive Web App for QR-based bin and inventory management. Organize items into labeled bins, generate printable QR code labels, and scan them to quickly look up or add items.
 
-All data stays in your browser — there is no backend or account required.
+## Modes
+
+BinManager now supports two modes:
+
+- Local-only (default fallback): all data in browser IndexedDB.
+- Cloud sync (optional): Google sign-in + Vercel API + Vercel Blob storage.
+
+If cloud env vars are not configured, the app still runs in local-only mode.
 
 ## Features
 
-- **Search** — Fuzzy search across all bins and items from the home screen
-- **QR Scanning** — Scan a bin's QR label with your phone camera to jump straight to its contents. Scanning an unknown code offers to create a new bin for it
-- **Bin Management** — Create, edit, archive, and delete bins. Each bin has a name, location, description, and auto-generated ID (`BIN-001`, `BIN-002`, etc.)
-- **Item Tracking** — Add items to bins with descriptions, tags, and optional photos taken from your device camera
-- **Label Printing** — Generate bins in bulk and print sheets of QR code labels
-- **Data Export/Import** — Export all data as JSON for backup or transfer between devices. Import with merge or replace modes
-- **Offline Support** — Works without an internet connection after first load via service worker caching
-- **Installable** — Can be installed as a standalone app on mobile and desktop through the browser's "Add to Home Screen" option
+- **Search**: Fuzzy search across bins and items
+- **QR Scanning**: Scan a bin label to open it; unknown codes can start new bin creation
+- **Bin Management**: Create, edit, archive, and delete bins (`BIN-001`, `BIN-002`, ...)
+- **Item Tracking**: Add/edit items with tags and optional photos
+- **Bins View + Label Printing**: Browse bins and print QR labels
+- **Data Management**:
+  - JSON export/import and recovery tools
+  - Cloud sign-in/out
+  - Cloud Push/Pull snapshot sync
+- **Offline Support**: Service worker cache-first behavior for installed PWA use
 
-## How It Works
+## Storage Model
 
-BinManager is a client-side only single-page application. All data (bins, items, and photos) is stored in your browser's IndexedDB. Photos are saved as base64 data URIs.
+### Local (IndexedDB)
 
-The app is built with vanilla JavaScript (ES modules), HTML, and CSS — no frameworks, no build step, no bundler. Three small libraries are loaded from CDNs:
+- `bins` and `items` object stores for inventory data
+- `photos` object store for image blobs
+- items reference photos via `photoId`
 
-| Library | Purpose |
-|---------|---------|
-| [html5-qrcode](https://github.com/mebjas/html5-qrcode) | QR code scanning via device camera |
-| [Fuse.js](https://www.fusejs.io/) | Fuzzy text search |
-| [qrcode](https://github.com/soldair/node-qrcode) | QR code image generation |
+### Cloud (Vercel Blob)
+
+- per-user snapshot JSON stored as private blob objects
+- per-user photo objects deduplicated by SHA-256 hash
+- pointer metadata (`latest snapshot`) stored as a private blob JSON file
+
+Snapshot payloads intentionally exclude inline image data.
+
+## Tech Stack
+
+- Vanilla JavaScript (ES modules)
+- HTML/CSS
+- IndexedDB
+- Service Worker
+- Vercel API functions (`/api/*`)
+- Vercel Blob (`@vercel/blob`)
+- Google ID token verification (`google-auth-library`)
+- CDN libraries:
+  - [html5-qrcode](https://github.com/mebjas/html5-qrcode)
+  - [Fuse.js](https://www.fusejs.io/)
+  - [qrcode](https://github.com/soldair/node-qrcode)
 
 ## Running Locally
 
-No install or build step needed. Serve the files with any static server:
+### Local-only static mode
 
 ```bash
-# Python
 python3 -m http.server 8000
-
-# Node
+# or
 npx serve .
 ```
 
-Then open http://localhost:8000.
+Open [http://localhost:8000](http://localhost:8000).
+
+### Full mode with API routes
+
+Use Vercel local runtime so `/api/*` works:
+
+```bash
+npm install
+vercel dev
+```
+
+## Environment Variables (Cloud Sync)
+
+Set these in Vercel project settings (and local `.env` for `vercel dev`):
+
+- `SESSION_SECRET`: random long secret used to sign session cookies
+- `GOOGLE_CLIENT_ID`: OAuth client ID for Google Identity Services
+- `BLOB_READ_WRITE_TOKEN`: Vercel Blob token
+
+## Tests
+
+Node unit tests cover pure logic modules:
+
+```bash
+npm test
+```
 
 ## Project Structure
 
+```text
+├── index.html
+├── style.css
+├── manifest.json
+├── service-worker.js
+├── api/
+│   ├── auth/
+│   └── sync/
+├── server/
+├── src/
+│   ├── app.js
+│   ├── db.js
+│   ├── scanner.js
+│   ├── views/
+│   ├── ui/
+│   └── lib/
+└── tests/
+    └── node/
 ```
-├── index.html          # Single-page HTML with all views
-├── style.css           # Dark-themed mobile-first styles
-├── manifest.json       # PWA manifest
-├── service-worker.js   # Offline caching
-└── src/
-    ├── app.js          # Application logic, navigation, rendering
-    ├── db.js           # IndexedDB storage layer
-    └── scanner.js      # QR scanner wrapper
-```
-
-## Deployment
-
-The app deploys to Vercel as a static site. Push to the main branch to trigger automatic deployment.

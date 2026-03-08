@@ -1,31 +1,42 @@
-# BinManager Feature Recommendations
+# BinManager Feature Roadmap
 
-## 1. Barcode Scanning
+## 1. Cloud Sync (MVP Implemented)
 
-Enable barcode formats in `html5-qrcode` (EAN-13, UPC-A, Code 128, etc.) so users can catalog items with existing product barcodes.
+Implemented:
+- Google sign-in/out in the Data view
+- Cloud Push/Pull actions
+- Per-user private cloud snapshot storage
+- Photo deduplication by SHA-256 hash in cloud object storage
 
-- Add `formatsToSupport` in scanner config
-- Match scans against item descriptions or a new `barcode` field
-- Optional: pull product data from a public API
+Current behavior:
+- Push uploads missing photos first, then uploads snapshot JSON.
+- Pull replaces local data with cloud snapshot and restores photos.
+- Sync is explicit/manual (no background auto-sync yet).
 
-## 2. Bulk Item Management
+Next improvements:
+- Optional merge-based pull mode
+- Better progress and retry UX for large photo sets
+- Optional snapshot compression
 
-Add tools for moving and deleting multiple items at once.
+## 2. Barcode Scanning
 
-- Add multi-select checkboxes in bin detail view
-- Add batch actions: delete selected, move selected
-- Add single-item "Move to bin" action
+Enable additional barcode formats in `html5-qrcode` (EAN-13, UPC-A, Code 128, etc.) so users can catalog items with existing product barcodes.
 
-## 3. Multi-Device Sync
+- Configure `formatsToSupport` in scanner setup.
+- Add optional `barcode` field on items for exact lookup.
+- Optionally enrich metadata from external product APIs.
 
-Provide a way to share inventory across devices.
+## 3. Bulk Item Management
 
-- Lightweight option: export/import via QR, clipboard, or share sheet
-- Full option: optional backend sync (for example, PouchDB + CouchDB)
+Add tools for moving, tagging, and deleting many items at once.
+
+- Multi-select mode in bin detail and tag results.
+- Batch actions: move, retag, delete.
+- Optional undo for destructive operations.
 
 ## Notes
 
-- Keep the no-build, minimal-dependency approach
-- Update IndexedDB version and migration logic for schema changes
-- Update service worker `ASSETS` and bump cache version when files change
-- Keep escaping user content with `esc()`
+- Keep no-build frontend architecture.
+- Keep service worker `ASSETS` + cache version updated when client files change.
+- Continue using `esc()`/`escAttr()` for user-supplied content.
+- Preserve import/export compatibility when schema changes.
