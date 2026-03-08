@@ -865,116 +865,171 @@ $('multi-crop-save').addEventListener('click', async () => {
 
 function autoDetectItems(img, opts = {}) {
   const {
-    downscale = 0.5,           // Process at half res for speed
-    edgeThreshold = 40,        // Gradient magnitude threshold
-    minBoxArea = 0.005,        // Min box area as fraction of image
-    maxBoxArea = 0.6,          // Max box area as fraction of image
-    morphRadius = 3,           // Dilation/erosion radius
-    mergeOverlap = 0.3,        // IoU threshold for merging overlapping boxes
+    downscale = 0.25,          // Process at quarter res for speed
+    colorThreshold = 35,       // Color distance from background to count as foreground
+    minBoxFrac = 0.008,        // Min box area as fraction of image area
+    maxBoxFrac = 0.55,         // Max box area as fraction of image area
+    borderSample = 0.08,       // Fraction of image edge to sample for background
+    erodeRadius = 2,           // Erode to remove noise
+    dilateRadius = 5,          // Dilate to connect nearby foreground
+    mergeOverlap = 0.25,       // Overlap ratio to merge boxes
+    padding = 0.03,            // Padding added around detected boxes (fraction of box size)
   } = opts;
 
-  const w = Math.round(img.width * downscale);
-  const h = Math.round(img.height * downscale);
+  const w = Math.max(80, Math.round(img.width * downscale));
+  const h = Math.max(80, Math.round(img.height * downscale));
+  const scale = img.width / w; // to map back to full image coords
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(img, 0, 0, w, h);
-  const imageData = ctx.getImageData(0, 0, w, h);
-  const pixels = imageData.data;
+  const data = ctx.getImageData(0, 0, w, h).data;
 
-  // 1. Grayscale
-  const gray = new Uint8Array(w * h);
-  for (let i = 0; i < gray.length; i++) {
-    const p = i * 4;
-    gray[i] = (pixels[p] * 77 + pixels[p + 1] * 150 + pixels[p + 2] * 29) >> 8;
-  }
-
-  // 2. Sobel edge detection
-  const edges = new Uint8Array(w * h);
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      const idx = y * w + x;
-      const gx = -gray[idx - w - 1] + gray[idx - w + 1]
-               - 2 * gray[idx - 1] + 2 * gray[idx + 1]
-               - gray[idx + w - 1] + gray[idx + w + 1];
-      const gy = -gray[idx - w - 1] - 2 * gray[idx - w] - gray[idx - w + 1]
-               + gray[idx + w - 1] + 2 * gray[idx + w] + gray[idx + w + 1];
-      const mag = Math.sqrt(gx * gx + gy * gy);
-      edges[idx] = mag > edgeThreshold ? 255 : 0;
-    }
-  }
-
-  // 3. Dilate to close small gaps
-  const dilated = new Uint8Array(w * h);
-  for (let y = morphRadius; y < h - morphRadius; y++) {
-    for (let x = morphRadius; x < w - morphRadius; x++) {
-      let found = false;
-      for (let dy = -morphRadius; dy <= morphRadius && !found; dy++) {
-        for (let dx = -morphRadius; dx <= morphRadius && !found; dx++) {
-          if (edges[(y + dy) * w + (x + dx)] === 255) found = true;
-        }
+  // 1. Sample background color from image borders
+  const borderPixels = [];
+  const bw = Math.max(2, Math.round(w * borderSample));
+  const bh = Math.max(2, Math.round(h * borderSample));
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (x < bw || x >= w - bw || y < bh || y >= h - bh) {
+        const p = (y * w + x) * 4;
+        borderPixels.push([data[p], data[p + 1], data[p + 2]]);
       }
-      dilated[y * w + x] = found ? 255 : 0;
     }
   }
 
-  // 4. Connected components via flood fill
+  // Use median of border pixels as background (robust to outliers)
+  const bgR = median(borderPixels.map(p => p[0]));
+  const bgG = median(borderPixels.map(p => p[1]));
+  const bgB = median(borderPixels.map(p => p[2]));
+
+  // 2. Foreground mask: pixels that differ enough from background
+  const fg = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const p = i * 4;
+    const dr = data[p] - bgR;
+    const dg = data[p + 1] - bgG;
+    const db = data[p + 2] - bgB;
+    const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+    fg[i] = dist > colorThreshold ? 1 : 0;
+  }
+
+  // 3. Erode to remove small noise specks
+  const eroded = morphOp(fg, w, h, erodeRadius, 'erode');
+
+  // 4. Dilate to connect nearby foreground regions
+  const mask = morphOp(eroded, w, h, dilateRadius, 'dilate');
+
+  // 5. Connected components via flood fill
   const labels = new Int32Array(w * h);
   let nextLabel = 1;
-  const componentBounds = []; // index = label-1, value = {x1,y1,x2,y2}
+  const bounds = [];
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const idx = y * w + x;
-      if (dilated[idx] === 255 && labels[idx] === 0) {
+      if (mask[idx] === 1 && labels[idx] === 0) {
         const label = nextLabel++;
         let x1 = x, y1 = y, x2 = x, y2 = y;
+        let pixelCount = 0;
         const stack = [idx];
         labels[idx] = label;
         while (stack.length > 0) {
           const ci = stack.pop();
           const cx = ci % w;
           const cy = (ci - cx) / w;
+          pixelCount++;
           if (cx < x1) x1 = cx;
           if (cx > x2) x2 = cx;
           if (cy < y1) y1 = cy;
           if (cy > y2) y2 = cy;
-          const neighbors = [ci - 1, ci + 1, ci - w, ci + w];
-          for (const ni of neighbors) {
-            if (ni >= 0 && ni < w * h && dilated[ni] === 255 && labels[ni] === 0) {
-              labels[ni] = label;
-              stack.push(ni);
+          // 8-connected neighbors
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = cx + dx, ny = cy + dy;
+              if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                const ni = ny * w + nx;
+                if (mask[ni] === 1 && labels[ni] === 0) {
+                  labels[ni] = label;
+                  stack.push(ni);
+                }
+              }
             }
           }
         }
-        componentBounds.push({ x1, y1, x2, y2 });
+        bounds.push({ x1, y1, x2, y2, pixelCount });
       }
     }
   }
 
-  // 5. Filter by size
+  // 6. Filter by size and convert to image coordinates with padding
   const totalArea = w * h;
-  let boxes = componentBounds
-    .map(b => ({
-      x: b.x1 / downscale,
-      y: b.y1 / downscale,
-      w: (b.x2 - b.x1 + 1) / downscale,
-      h: (b.y2 - b.y1 + 1) / downscale,
-    }))
-    .filter(b => {
-      const area = (b.w * downscale) * (b.h * downscale);
-      const frac = area / totalArea;
-      return frac >= minBoxArea && frac <= maxBoxArea;
-    });
+  let boxes = [];
+  for (const b of bounds) {
+    const bw2 = b.x2 - b.x1 + 1;
+    const bh2 = b.y2 - b.y1 + 1;
+    const boxArea = bw2 * bh2;
+    const frac = boxArea / totalArea;
+    // Also check fill ratio — skip very sparse components (likely noise)
+    const fillRatio = b.pixelCount / boxArea;
+    if (frac >= minBoxFrac && frac <= maxBoxFrac && fillRatio > 0.1) {
+      // Add padding
+      const padX = Math.round(bw2 * padding);
+      const padY = Math.round(bh2 * padding);
+      const px1 = Math.max(0, b.x1 - padX);
+      const py1 = Math.max(0, b.y1 - padY);
+      const px2 = Math.min(w - 1, b.x2 + padX);
+      const py2 = Math.min(h - 1, b.y2 + padY);
+      boxes.push({
+        x: Math.round(px1 * scale),
+        y: Math.round(py1 * scale),
+        w: Math.round((px2 - px1 + 1) * scale),
+        h: Math.round((py2 - py1 + 1) * scale),
+      });
+    }
+  }
 
-  // 6. Merge overlapping boxes
+  // 7. Merge overlapping boxes
   boxes = mergeBoxes(boxes, mergeOverlap);
 
-  // 7. Sort top-to-bottom, left-to-right
+  // 8. Sort top-to-bottom, left-to-right
   boxes.sort((a, b) => a.y - b.y || a.x - b.x);
 
   return boxes;
+}
+
+function median(arr) {
+  const sorted = arr.slice().sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) >> 1;
+}
+
+function morphOp(mask, w, h, radius, op) {
+  const out = new Uint8Array(w * h);
+  const target = op === 'erode' ? 0 : 1;
+  const init = op === 'erode' ? 1 : 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let val = init;
+      outer:
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) {
+            if (op === 'erode') { val = 0; break outer; }
+            continue;
+          }
+          const v = mask[ny * w + nx];
+          if (op === 'erode' && v === 0) { val = 0; break outer; }
+          if (op === 'dilate' && v === 1) { val = 1; break outer; }
+        }
+      }
+      out[y * w + x] = val;
+    }
+  }
+  return out;
 }
 
 function mergeBoxes(boxes, overlapThreshold) {
@@ -993,13 +1048,12 @@ function mergeBoxes(boxes, overlapThreshold) {
           const interArea = (ix2 - ix1) * (iy2 - iy1);
           const minArea = Math.min(a.w * a.h, b.w * b.h);
           if (interArea / minArea >= overlapThreshold) {
-            // Merge b into a
             const nx = Math.min(a.x, b.x);
             const ny = Math.min(a.y, b.y);
-            a.x = nx;
-            a.y = ny;
             a.w = Math.max(a.x + a.w, b.x + b.w) - nx;
             a.h = Math.max(a.y + a.h, b.y + b.h) - ny;
+            a.x = nx;
+            a.y = ny;
             boxes.splice(j, 1);
             merged = true;
             break;
