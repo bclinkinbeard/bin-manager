@@ -1,5 +1,6 @@
 import * as db from './db.js';
 import * as scanner from './scanner.js';
+import scribe from '../node_modules/scribe.js-ocr/scribe.js';
 
 // ── DOM refs ──
 
@@ -933,101 +934,28 @@ $('multi-crop-save').addEventListener('click', async () => {
   openBin(currentBinId);
 });
 
-// ── OCR ──
+// ── OCR (Scribe.js) ──
 
-let ocrWorker = null;
+let scribeInitialized = false;
 
-async function getOcrWorker() {
-  if (ocrWorker) return ocrWorker;
-  ocrWorker = await Tesseract.createWorker('eng');
-  await ocrWorker.setParameters({
-    tessedit_pageseg_mode: '11',   // SPARSE_TEXT: find text anywhere in image
-    load_system_dawg: '0',         // Disable dictionary — labels aren't real words
-    load_freq_dawg: '0',
-    user_defined_dpi: '300',
-  });
-  return ocrWorker;
-}
-
-function preprocessForOcr(imageSource) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      // Scale up small images — Tesseract needs >= 300 DPI equivalent
-      const minDim = 1500;
-      let { width, height } = img;
-      const scale = Math.max(1, minDim / Math.min(width, height));
-      width = Math.round(width * scale);
-      height = Math.round(height * scale);
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
-
-      const imageData = ctx.getImageData(0, 0, width, height);
-      const d = imageData.data;
-      const w = width;
-      const h = height;
-
-      // Convert to grayscale
-      const gray = new Float32Array(w * h);
-      for (let i = 0; i < gray.length; i++) {
-        gray[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-      }
-
-      // Unsharp mask: sharpen by subtracting a blurred version
-      // Use a simple 3x3 box blur then apply: sharpened = original + strength * (original - blurred)
-      const blurred = new Float32Array(w * h);
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          let sum = 0, count = 0;
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const ny = y + dy, nx = x + dx;
-              if (ny >= 0 && ny < h && nx >= 0 && nx < w) {
-                sum += gray[ny * w + nx];
-                count++;
-              }
-            }
-          }
-          blurred[y * w + x] = sum / count;
-        }
-      }
-      const sharpStrength = 1.5;
-      for (let i = 0; i < gray.length; i++) {
-        gray[i] = Math.min(255, Math.max(0, gray[i] + sharpStrength * (gray[i] - blurred[i])));
-      }
-
-      // Auto-contrast: stretch luminance to full 0-255 range
-      let min = 255, max = 0;
-      for (let i = 0; i < gray.length; i++) {
-        if (gray[i] < min) min = gray[i];
-        if (gray[i] > max) max = gray[i];
-      }
-      const range = max - min || 1;
-
-      // Apply contrast stretch and write back
-      for (let i = 0; i < gray.length; i++) {
-        const v = Math.round(((gray[i] - min) / range) * 255);
-        d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v;
-      }
-
-      ctx.putImageData(imageData, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
-    };
-    img.onerror = () => resolve(imageSource);
-    img.src = imageSource;
-  });
+function dataUrlToFile(dataUrl, filename = 'image.png') {
+  const [header, base64] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)[1];
+  const bytes = atob(base64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return new File([arr], filename, { type: mime });
 }
 
 async function ocrImage(imageSource) {
   try {
-    const processed = await preprocessForOcr(imageSource);
-    const worker = await getOcrWorker();
-    const { data: { text } } = await worker.recognize(processed);
-    return text.trim();
+    if (!scribeInitialized) {
+      scribe.init({ ocr: true, font: true });
+      scribeInitialized = true;
+    }
+    const file = dataUrlToFile(imageSource);
+    const text = await scribe.extractText([file]);
+    return (text || '').trim();
   } catch (e) {
     console.error('OCR failed:', e);
     return '';

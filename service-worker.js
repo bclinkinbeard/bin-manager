@@ -1,4 +1,4 @@
-const CACHE_NAME = 'binmanager-v13';
+const CACHE_NAME = 'binmanager-v14';
 const FONT_CACHE = 'binmanager-fonts-v1';
 const ASSETS = [
   './',
@@ -11,7 +11,6 @@ const ASSETS = [
   'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js',
   'https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js',
-  'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js',
 ];
 
 self.addEventListener('install', (e) => {
