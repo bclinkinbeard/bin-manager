@@ -1,4 +1,4 @@
-const CACHE_NAME = 'binmanager-v12';
+const CACHE_NAME = 'binmanager-v13';
 const FONT_CACHE = 'binmanager-fonts-v1';
 const ASSETS = [
   './',
@@ -7,6 +7,15 @@ const ASSETS = [
   './src/app.js',
   './src/db.js',
   './src/scanner.js',
+  './src/ui/dom.js',
+  './src/ui/toast.js',
+  './src/ui/modal.js',
+  './src/lib/routes.js',
+  './src/lib/tags.js',
+  './src/lib/sort.js',
+  './src/lib/import-validation.js',
+  './src/lib/ids.js',
+  './src/lib/sync-meta.js',
   './manifest.json',
   'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js',

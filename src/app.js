@@ -1,9 +1,22 @@
 import * as db from './db.js';
 import * as scanner from './scanner.js';
+import { $, esc, escAttr } from './ui/dom.js';
+import { createToast } from './ui/toast.js';
+import { createConfirmAction } from './ui/modal.js';
+import { buildRouteFromState, parseRouteFromHash as parseHashRoute } from './lib/routes.js';
+import { parseTags } from './lib/tags.js';
+import { sortItems } from './lib/sort.js';
+import { validateImportData } from './lib/import-validation.js';
+import { formatBinId } from './lib/ids.js';
+import {
+  parseValidIso,
+  getSyncMetaIso,
+  setSyncMetaIso,
+  formatDateTime,
+  getLatestLocalSyncMs,
+} from './lib/sync-meta.js';
 
 // ── DOM refs ──
-
-const $ = (id) => document.getElementById(id);
 
 const views = {
   search: $('view-search'),
@@ -50,28 +63,8 @@ let isApplyingRoute = false;
 let ignoreNextHashChange = false;
 
 // ── Custom Confirmation Modal ──
-
-function confirmAction({ title, message, confirmLabel, danger }) {
-  return new Promise((resolve) => {
-    $('modal-title').textContent = title || 'Confirm';
-    $('modal-message').textContent = message || 'Are you sure?';
-    const confirmBtn = $('modal-confirm');
-    confirmBtn.textContent = confirmLabel || 'Confirm';
-    confirmBtn.className = danger === false ? 'btn btn-primary' : 'btn btn-danger';
-    $('modal-overlay').classList.add('active');
-
-    function cleanup() {
-      $('modal-overlay').classList.remove('active');
-      confirmBtn.removeEventListener('click', onConfirm);
-      $('modal-cancel').removeEventListener('click', onCancel);
-    }
-    function onConfirm() { cleanup(); resolve(true); }
-    function onCancel() { cleanup(); resolve(false); }
-
-    confirmBtn.addEventListener('click', onConfirm);
-    $('modal-cancel').addEventListener('click', onCancel);
-  });
-}
+const confirmAction = createConfirmAction($);
+const showToast = createToast($);
 
 // ── Navigation ──
 
@@ -107,58 +100,18 @@ function showView(name, options = {}) {
 
 function routeForCurrentView() {
   const activeViewName = Object.entries(views).find(([, el]) => el.classList.contains('active'))?.[0] || 'search';
-  const params = new URLSearchParams();
-
-  if (activeViewName === 'search') {
-    const q = $('search-input').value.trim();
-    if (q) params.set('q', q);
-    if ($('search-show-archived').checked) params.set('archived', '1');
-    const query = params.toString();
-    return query ? `search?${query}` : 'search';
-  }
-
-  if (activeViewName === 'scan') return 'scan';
-  if (activeViewName === 'bins') return 'bins';
-  if (activeViewName === 'data') return 'data';
-
-  if (activeViewName === 'bin') {
-    return currentBinId ? `bin/${encodeURIComponent(currentBinId)}` : 'search';
-  }
-
-  if (activeViewName === 'tag') {
-    if (!currentTag) return 'search';
-    if (currentTagOriginBinId) params.set('origin', currentTagOriginBinId);
-    const query = params.toString();
-    return query
-      ? `tag/${encodeURIComponent(currentTag)}?${query}`
-      : `tag/${encodeURIComponent(currentTag)}`;
-  }
-
-  if (activeViewName === 'binForm') {
-    const id = $('bin-form-id').value.trim();
-    if (!id) return 'search';
-    if (editingBin) params.set('edit', '1');
-    const query = params.toString();
-    return query
-      ? `bin-form/${encodeURIComponent(id)}?${query}`
-      : `bin-form/${encodeURIComponent(id)}`;
-  }
-
-  if (activeViewName === 'itemForm') {
-    if (currentEditItemId) return `item-form/edit/${encodeURIComponent(currentEditItemId)}`;
-    const binId = $('item-form-bin').value || currentBinId;
-    if (binId) params.set('bin', binId);
-    const query = params.toString();
-    return query ? `item-form?${query}` : 'item-form';
-  }
-
-  if (activeViewName === 'multiCrop') {
-    if (currentBinId) params.set('bin', currentBinId);
-    const query = params.toString();
-    return query ? `multi-crop?${query}` : 'multi-crop';
-  }
-
-  return 'search';
+  return buildRouteFromState({
+    activeViewName,
+    searchQuery: $('search-input').value,
+    showArchived: $('search-show-archived').checked,
+    currentBinId,
+    currentTag,
+    currentTagOriginBinId,
+    binFormId: $('bin-form-id').value,
+    editingBin,
+    currentEditItemId,
+    itemFormBinId: $('item-form-bin').value,
+  });
 }
 
 function syncRouteToUrl({ replace = false } = {}) {
@@ -175,41 +128,7 @@ function syncRouteToUrl({ replace = false } = {}) {
 }
 
 function parseRouteFromHash() {
-  const raw = window.location.hash.replace(/^#/, '');
-  if (!raw) return { view: 'search', q: '', archived: false };
-
-  const [pathPart, queryPart = ''] = raw.split('?');
-  const path = pathPart.replace(/^\/+/, '');
-  const parts = path.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
-  const params = new URLSearchParams(queryPart);
-
-  if (parts.length === 0 || parts[0] === 'search') {
-    return {
-      view: 'search',
-      q: params.get('q') || '',
-      archived: params.get('archived') === '1',
-    };
-  }
-
-  if (parts[0] === 'scan') return { view: 'scan' };
-  if (parts[0] === 'bins') return { view: 'bins' };
-  if (parts[0] === 'data') return { view: 'data' };
-  if (parts[0] === 'bin') return { view: 'bin', binId: parts[1] || '' };
-  if (parts[0] === 'tag') return { view: 'tag', tag: parts[1] || '', originBinId: params.get('origin') || null };
-  if (parts[0] === 'bin-form') return { view: 'binForm', binId: parts[1] || '', edit: params.get('edit') === '1' };
-
-  if (parts[0] === 'item-form') {
-    if (parts[1] === 'edit' && parts[2]) {
-      return { view: 'itemForm', itemId: parts[2] };
-    }
-    return { view: 'itemForm', binId: params.get('bin') || '' };
-  }
-
-  if (parts[0] === 'multi-crop') {
-    return { view: 'multiCrop', binId: params.get('bin') || '' };
-  }
-
-  return { view: 'search', q: '', archived: false };
+  return parseHashRoute(window.location.hash);
 }
 
 async function applyRouteFromHash() {
@@ -310,61 +229,10 @@ navBtns.forEach((btn) => {
 
 // ── Toast ──
 
-function showToast(message, type) {
-  const toast = $('toast');
-  toast.textContent = message;
-  toast.className = 'toast visible' + (type ? ' toast-' + type : '');
-  clearTimeout(toast._timer);
-  toast._timer = setTimeout(() => { toast.className = 'toast'; }, 2500);
-}
-
-function parseTags(tagsStr) {
-  return tagsStr
-    ? [...new Set(tagsStr.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean))]
-    : [];
-}
-
-function parseValidIso(iso) {
-  if (!iso || typeof iso !== 'string') return null;
-  const ms = Date.parse(iso);
-  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
-}
-
-function getSyncMetaIso(key) {
-  return parseValidIso(localStorage.getItem(key));
-}
-
-function setSyncMetaIso(key, iso) {
-  const safeIso = parseValidIso(iso);
-  if (!safeIso) return;
-  localStorage.setItem(key, safeIso);
-}
-
-function formatDateTime(iso) {
-  const safeIso = parseValidIso(iso);
-  if (!safeIso) return null;
-  const d = new Date(safeIso);
-  return d.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
-function getLatestLocalSyncMs() {
-  const lastExport = getSyncMetaIso(SYNC_META_KEYS.lastExportAt);
-  const lastImport = getSyncMetaIso(SYNC_META_KEYS.lastImportAt);
-  const exportMs = lastExport ? Date.parse(lastExport) : 0;
-  const importMs = lastImport ? Date.parse(lastImport) : 0;
-  return Math.max(exportMs, importMs);
-}
-
 function refreshSyncStatus() {
-  const exportLabel = formatDateTime(getSyncMetaIso(SYNC_META_KEYS.lastExportAt)) || 'Never';
-  const importLabel = formatDateTime(getSyncMetaIso(SYNC_META_KEYS.lastImportAt)) || 'Never';
-  const importedFileLabel = formatDateTime(getSyncMetaIso(SYNC_META_KEYS.lastImportedFileExportedAt)) || 'Unknown';
+  const exportLabel = formatDateTime(getSyncMetaIso(localStorage, SYNC_META_KEYS.lastExportAt)) || 'Never';
+  const importLabel = formatDateTime(getSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportAt)) || 'Never';
+  const importedFileLabel = formatDateTime(getSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportedFileExportedAt)) || 'Unknown';
   $('sync-last-export').textContent = exportLabel;
   $('sync-last-import').textContent = importLabel;
   $('sync-last-imported-file-export').textContent = importedFileLabel;
@@ -384,7 +252,7 @@ function updateStaleImportWarning(incomingExportedAt) {
   hideImportWarning();
   const safeIncoming = parseValidIso(incomingExportedAt);
   if (!safeIncoming) return;
-  const latestLocalMs = getLatestLocalSyncMs();
+  const latestLocalMs = getLatestLocalSyncMs(localStorage, SYNC_META_KEYS);
   if (!Number.isFinite(latestLocalMs) || latestLocalMs <= 0) return;
   const incomingMs = Date.parse(safeIncoming);
   if (incomingMs < latestLocalMs) {
@@ -568,29 +436,9 @@ async function openBin(id, options = {}) {
   showView('bin', { syncUrl });
 }
 
-function sortItems(items) {
-  const sorted = [...items];
-  switch (itemSortOrder) {
-    case 'oldest':
-      sorted.sort((a, b) => (a.addedAt || '').localeCompare(b.addedAt || ''));
-      break;
-    case 'az':
-      sorted.sort((a, b) => (a.description || '').localeCompare(b.description || ''));
-      break;
-    case 'za':
-      sorted.sort((a, b) => (b.description || '').localeCompare(a.description || ''));
-      break;
-    case 'newest':
-    default:
-      sorted.sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
-      break;
-  }
-  return sorted;
-}
-
 function renderBinItems() {
   const container = $('bin-items-list');
-  const sorted = sortItems(currentBinItems);
+  const sorted = sortItems(currentBinItems, itemSortOrder);
   const paged = sorted.slice(0, itemsPage * ITEMS_PER_PAGE);
   const hasMore = sorted.length > paged.length;
 
@@ -682,7 +530,7 @@ async function openTagResults(tag, originBinId, options = {}) {
     db.getAllBins(),
   ]);
   const binMap = new Map(bins.map((b) => [b.id, b]));
-  const sortedItems = sortItems(items);
+  const sortedItems = sortItems(items, itemSortOrder);
 
   $('tag-results-title').textContent = `#${normalizedTag}`;
   $('tag-results-subtitle').textContent = `${sortedItems.length} item${sortedItems.length === 1 ? '' : 's'} with this tag`;
@@ -865,7 +713,7 @@ $('search-add-item').addEventListener('click', async () => {
   if (bins.length === 0) {
     const next = await db.getNextBinNumber();
     const newBin = {
-      id: `BIN-${String(next).padStart(3, '0')}`,
+      id: formatBinId(next),
       name: '',
       location: '',
       description: '',
@@ -1305,7 +1153,7 @@ $('bins-print').addEventListener('click', () => window.print());
 
 $('bins-add').addEventListener('click', async () => {
   const next = await db.getNextBinNumber();
-  const id = `BIN-${String(next).padStart(3, '0')}`;
+  const id = formatBinId(next);
   openBinForm(id, null);
 });
 
@@ -1321,7 +1169,7 @@ $('data-export').addEventListener('click', async () => {
     a.download = `binmanager-export-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setSyncMetaIso(SYNC_META_KEYS.lastExportAt, new Date().toISOString());
+    setSyncMetaIso(localStorage, SYNC_META_KEYS.lastExportAt, new Date().toISOString());
     refreshSyncStatus();
     showToast('Data exported successfully', 'success');
   } catch (e) {
@@ -1391,9 +1239,9 @@ $('import-confirm').addEventListener('click', async () => {
   }
 
   await db.importAll(pendingImportData, mode);
-  setSyncMetaIso(SYNC_META_KEYS.lastImportAt, new Date().toISOString());
+  setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportAt, new Date().toISOString());
   if (pendingImportExportedAt) {
-    setSyncMetaIso(SYNC_META_KEYS.lastImportedFileExportedAt, pendingImportExportedAt);
+    setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportedFileExportedAt, pendingImportExportedAt);
   } else {
     localStorage.removeItem(SYNC_META_KEYS.lastImportedFileExportedAt);
   }
@@ -1414,38 +1262,7 @@ $('import-cancel').addEventListener('click', () => {
   hideImportWarning();
 });
 
-// ── Import Validation ──
-
-function validateImportData(data) {
-  if (!data || typeof data !== 'object') return false;
-  if (!data.bins && !data.items) return false;
-  if (data.bins && !Array.isArray(data.bins)) return false;
-  if (data.items && !Array.isArray(data.items)) return false;
-  if (data.bins) {
-    for (const bin of data.bins) {
-      if (!bin.id || typeof bin.id !== 'string') return false;
-    }
-  }
-  if (data.items) {
-    for (const item of data.items) {
-      if (!item.id || typeof item.id !== 'string') return false;
-      if (!item.binId || typeof item.binId !== 'string') return false;
-    }
-  }
-  return true;
-}
-
 // ── Utilities ──
-
-const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ESC_MAP[c]);
-}
-
-function escAttr(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ESC_MAP[c]);
-}
 
 function formatDate(iso) {
   if (!iso) return '';
