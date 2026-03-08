@@ -166,6 +166,10 @@
         <button class="btn btn-secondary btn-sm" id="multi-crop-clear">Clear All</button>
         <span class="multi-crop-count" id="multi-crop-count">0 selections</span>
       </div>
+      <div class="form-group multi-crop-shared-tags-wrap">
+        <label for="multi-crop-shared-tags">Shared Tags (apply to all items)</label>
+        <input type="text" id="multi-crop-shared-tags" placeholder="e.g. electronics, sale, fragile">
+      </div>
       <div id="multi-crop-items"></div>
       <button class="btn btn-primary btn-block" id="multi-crop-save" style="margin-top:12px;" disabled>Save All Items</button>
     </div>
@@ -208,6 +212,10 @@
         <button class="btn btn-secondary" id="modal-cancel">Cancel</button>
       </div>
     </div>
+  </div>
+  <div class="image-modal-overlay" id="image-modal-overlay" aria-hidden="true">
+    <button class="image-modal-close" id="image-modal-close" aria-label="Close image preview">&times;</button>
+    <img id="image-modal-img" class="image-modal-img" alt="">
   </div>
 
   <!-- Bottom nav -->
