@@ -608,7 +608,7 @@ $('bin-add-multi').addEventListener('click', () => {
 
 function openMultiCropView() {
   showView('multiCrop');
-  $('multi-crop-hint').textContent = 'Draw rectangles around each item';
+  $('multi-crop-hint').textContent = 'Tap Auto-Detect or draw rectangles around each item';
   renderMultiCropCanvas();
   renderMultiCropItems();
 }
@@ -797,6 +797,29 @@ $('multi-crop-clear').addEventListener('click', () => {
   renderMultiCropItems();
 });
 
+$('multi-crop-detect').addEventListener('click', () => {
+  if (!multiCropImage) return;
+  const btn = $('multi-crop-detect');
+  btn.disabled = true;
+  btn.textContent = 'Detecting…';
+  // Use requestAnimationFrame so the UI updates before the sync computation
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      const boxes = autoDetectItems(multiCropImage);
+      if (boxes.length === 0) {
+        showToast('No distinct items detected — try drawing boxes manually', 'info');
+      } else {
+        multiCropSelections = boxes;
+        showToast(`Detected ${boxes.length} item${boxes.length === 1 ? '' : 's'} — adjust boxes as needed`, 'success');
+      }
+      renderMultiCropCanvas();
+      renderMultiCropItems();
+      btn.disabled = false;
+      btn.textContent = 'Auto-Detect';
+    }, 50);
+  });
+});
+
 $('multi-crop-back').addEventListener('click', () => {
   multiCropImage = null;
   multiCropSelections = [];
@@ -837,6 +860,157 @@ $('multi-crop-save').addEventListener('click', async () => {
   await refreshStats();
   openBin(currentBinId);
 });
+
+// ── Auto-Detect Item Boxes ──
+
+function autoDetectItems(img, opts = {}) {
+  const {
+    downscale = 0.5,           // Process at half res for speed
+    edgeThreshold = 40,        // Gradient magnitude threshold
+    minBoxArea = 0.005,        // Min box area as fraction of image
+    maxBoxArea = 0.6,          // Max box area as fraction of image
+    morphRadius = 3,           // Dilation/erosion radius
+    mergeOverlap = 0.3,        // IoU threshold for merging overlapping boxes
+  } = opts;
+
+  const w = Math.round(img.width * downscale);
+  const h = Math.round(img.height * downscale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, w, h);
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const pixels = imageData.data;
+
+  // 1. Grayscale
+  const gray = new Uint8Array(w * h);
+  for (let i = 0; i < gray.length; i++) {
+    const p = i * 4;
+    gray[i] = (pixels[p] * 77 + pixels[p + 1] * 150 + pixels[p + 2] * 29) >> 8;
+  }
+
+  // 2. Sobel edge detection
+  const edges = new Uint8Array(w * h);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = y * w + x;
+      const gx = -gray[idx - w - 1] + gray[idx - w + 1]
+               - 2 * gray[idx - 1] + 2 * gray[idx + 1]
+               - gray[idx + w - 1] + gray[idx + w + 1];
+      const gy = -gray[idx - w - 1] - 2 * gray[idx - w] - gray[idx - w + 1]
+               + gray[idx + w - 1] + 2 * gray[idx + w] + gray[idx + w + 1];
+      const mag = Math.sqrt(gx * gx + gy * gy);
+      edges[idx] = mag > edgeThreshold ? 255 : 0;
+    }
+  }
+
+  // 3. Dilate to close small gaps
+  const dilated = new Uint8Array(w * h);
+  for (let y = morphRadius; y < h - morphRadius; y++) {
+    for (let x = morphRadius; x < w - morphRadius; x++) {
+      let found = false;
+      for (let dy = -morphRadius; dy <= morphRadius && !found; dy++) {
+        for (let dx = -morphRadius; dx <= morphRadius && !found; dx++) {
+          if (edges[(y + dy) * w + (x + dx)] === 255) found = true;
+        }
+      }
+      dilated[y * w + x] = found ? 255 : 0;
+    }
+  }
+
+  // 4. Connected components via flood fill
+  const labels = new Int32Array(w * h);
+  let nextLabel = 1;
+  const componentBounds = []; // index = label-1, value = {x1,y1,x2,y2}
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (dilated[idx] === 255 && labels[idx] === 0) {
+        const label = nextLabel++;
+        let x1 = x, y1 = y, x2 = x, y2 = y;
+        const stack = [idx];
+        labels[idx] = label;
+        while (stack.length > 0) {
+          const ci = stack.pop();
+          const cx = ci % w;
+          const cy = (ci - cx) / w;
+          if (cx < x1) x1 = cx;
+          if (cx > x2) x2 = cx;
+          if (cy < y1) y1 = cy;
+          if (cy > y2) y2 = cy;
+          const neighbors = [ci - 1, ci + 1, ci - w, ci + w];
+          for (const ni of neighbors) {
+            if (ni >= 0 && ni < w * h && dilated[ni] === 255 && labels[ni] === 0) {
+              labels[ni] = label;
+              stack.push(ni);
+            }
+          }
+        }
+        componentBounds.push({ x1, y1, x2, y2 });
+      }
+    }
+  }
+
+  // 5. Filter by size
+  const totalArea = w * h;
+  let boxes = componentBounds
+    .map(b => ({
+      x: b.x1 / downscale,
+      y: b.y1 / downscale,
+      w: (b.x2 - b.x1 + 1) / downscale,
+      h: (b.y2 - b.y1 + 1) / downscale,
+    }))
+    .filter(b => {
+      const area = (b.w * downscale) * (b.h * downscale);
+      const frac = area / totalArea;
+      return frac >= minBoxArea && frac <= maxBoxArea;
+    });
+
+  // 6. Merge overlapping boxes
+  boxes = mergeBoxes(boxes, mergeOverlap);
+
+  // 7. Sort top-to-bottom, left-to-right
+  boxes.sort((a, b) => a.y - b.y || a.x - b.x);
+
+  return boxes;
+}
+
+function mergeBoxes(boxes, overlapThreshold) {
+  if (boxes.length === 0) return boxes;
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i], b = boxes[j];
+        const ix1 = Math.max(a.x, b.x);
+        const iy1 = Math.max(a.y, b.y);
+        const ix2 = Math.min(a.x + a.w, b.x + b.w);
+        const iy2 = Math.min(a.y + a.h, b.y + b.h);
+        if (ix1 < ix2 && iy1 < iy2) {
+          const interArea = (ix2 - ix1) * (iy2 - iy1);
+          const minArea = Math.min(a.w * a.h, b.w * b.h);
+          if (interArea / minArea >= overlapThreshold) {
+            // Merge b into a
+            const nx = Math.min(a.x, b.x);
+            const ny = Math.min(a.y, b.y);
+            a.x = nx;
+            a.y = ny;
+            a.w = Math.max(a.x + a.w, b.x + b.w) - nx;
+            a.h = Math.max(a.y + a.h, b.y + b.h) - ny;
+            boxes.splice(j, 1);
+            merged = true;
+            break;
+          }
+        }
+      }
+      if (merged) break;
+    }
+  }
+  return boxes;
+}
 
 // ── Photo Compression ──
 
