@@ -943,18 +943,275 @@ function compressImage(dataUrl, maxDim = 800, quality = 0.7) {
   });
 }
 
+// ── Recovery Helpers ──
+
+function idbReq(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function openNamedDb(name, version) {
+  return new Promise((resolve, reject) => {
+    const req = typeof version === 'number' ? indexedDB.open(name, version) : indexedDB.open(name);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function dbHasStore(connection, storeName) {
+  return connection.objectStoreNames.contains(storeName);
+}
+
+async function getAllFromStore(connection, storeName) {
+  if (!dbHasStore(connection, storeName)) return [];
+  const tx = connection.transaction(storeName, 'readonly');
+  return idbReq(tx.objectStore(storeName).getAll());
+}
+
+async function getCountFromStore(connection, storeName) {
+  if (!dbHasStore(connection, storeName)) return 0;
+  const tx = connection.transaction(storeName, 'readonly');
+  return idbReq(tx.objectStore(storeName).count());
+}
+
+async function getRecordFromStore(connection, storeName, key) {
+  if (!dbHasStore(connection, storeName)) return null;
+  const tx = connection.transaction(storeName, 'readonly');
+  return idbReq(tx.objectStore(storeName).get(key));
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function setRecoveryStatus(message, isError = false) {
+  const status = $('recovery-status');
+  if (!message) {
+    status.style.display = 'none';
+    status.textContent = '';
+    return;
+  }
+  status.style.display = 'block';
+  status.textContent = message;
+  status.style.color = isError ? 'var(--danger)' : 'var(--text-dim)';
+}
+
+async function listRecoveryDatabases() {
+  if (typeof indexedDB.databases !== 'function') {
+    return [{ name: 'binManagerDB', version: null, source: 'fallback' }];
+  }
+  const dbs = await indexedDB.databases();
+  const named = dbs.filter((d) => d && d.name).map((d) => ({ name: d.name, version: d.version || null, source: 'native' }));
+  if (named.length === 0) {
+    return [{ name: 'binManagerDB', version: null, source: 'fallback' }];
+  }
+  return named;
+}
+
+async function inspectRecoveryDatabase(dbInfo) {
+  const connection = await openNamedDb(dbInfo.name, dbInfo.version || undefined);
+  try {
+    const hasBins = dbHasStore(connection, 'bins');
+    const hasItems = dbHasStore(connection, 'items');
+    const hasPhotos = dbHasStore(connection, 'photos');
+    const [binCount, itemCount, photoCount] = await Promise.all([
+      getCountFromStore(connection, 'bins'),
+      getCountFromStore(connection, 'items'),
+      getCountFromStore(connection, 'photos'),
+    ]);
+    return {
+      ...dbInfo,
+      hasBins,
+      hasItems,
+      hasPhotos,
+      binCount,
+      itemCount,
+      photoCount,
+    };
+  } finally {
+    connection.close();
+  }
+}
+
+function renderRecoveryResults(results) {
+  const container = $('recovery-results');
+  if (!results.length) {
+    container.innerHTML = '<div class="empty-state">No local databases found on this origin.</div>';
+    return;
+  }
+
+  container.innerHTML = results.map((r) => {
+    const canRecover = r.hasBins && r.hasItems;
+    const hasData = r.binCount > 0 || r.itemCount > 0;
+    const disabled = !canRecover || !hasData ? ' disabled' : '';
+    const storeLabel = `${r.binCount} bin${r.binCount === 1 ? '' : 's'} • ${r.itemCount} item${r.itemCount === 1 ? '' : 's'}`;
+    const photosLabel = r.hasPhotos ? ` • ${r.photoCount} photo${r.photoCount === 1 ? '' : 's'}` : '';
+    const note = !canRecover
+      ? 'Missing bins/items stores.'
+      : (!hasData ? 'No records found.' : '');
+    return `
+      <div class="recovery-card">
+        <div class="recovery-name">${esc(r.name)}</div>
+        <div class="recovery-meta">${storeLabel}${photosLabel}${note ? ` • ${esc(note)}` : ''}</div>
+        <div class="recovery-actions">
+          <button class="btn btn-secondary recovery-export"${disabled} data-recovery-action="export" data-db-name="${escAttr(r.name)}">Export</button>
+          <button class="btn btn-danger recovery-restore"${disabled} data-recovery-action="restore" data-db-name="${escAttr(r.name)}">Restore (Replace)</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function downloadJson(data, filenameBase) {
+  const safeBase = String(filenameBase || 'export').replace(/[^a-zA-Z0-9._-]+/g, '-');
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safeBase}-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function extractRecoveryPayload(dbName) {
+  const connection = await openNamedDb(dbName);
+  try {
+    if (!dbHasStore(connection, 'bins') || !dbHasStore(connection, 'items')) {
+      throw new Error('Selected database is missing bins/items stores.');
+    }
+    const bins = await getAllFromStore(connection, 'bins');
+    const items = await getAllFromStore(connection, 'items');
+    const hasPhotos = dbHasStore(connection, 'photos');
+
+    const photoCache = new Map();
+    const exportItems = [];
+
+    for (const item of items) {
+      const out = { ...item };
+      if ((!out.photo || typeof out.photo !== 'string') && out.photoId && hasPhotos) {
+        let record = photoCache.get(out.photoId);
+        if (record === undefined) {
+          record = await getRecordFromStore(connection, 'photos', out.photoId);
+          photoCache.set(out.photoId, record || null);
+        }
+        if (record && record.blob) {
+          try {
+            out.photo = await blobToDataUrl(record.blob);
+          } catch (_) {
+            // Keep item without inline photo if conversion fails.
+          }
+        }
+      }
+      delete out.photoId;
+      exportItems.push(out);
+    }
+
+    return {
+      version: 1,
+      bins,
+      items: exportItems,
+      exportedAt: new Date().toISOString(),
+    };
+  } finally {
+    connection.close();
+  }
+}
+
+$('recovery-scan-btn').addEventListener('click', async () => {
+  const scanBtn = $('recovery-scan-btn');
+  scanBtn.disabled = true;
+  setRecoveryStatus(`Scanning local databases on ${window.location.origin}...`);
+  $('recovery-results').innerHTML = '';
+
+  try {
+    const dbs = await listRecoveryDatabases();
+    const inspected = [];
+    for (const dbInfo of dbs) {
+      try {
+        inspected.push(await inspectRecoveryDatabase(dbInfo));
+      } catch (_) {
+        inspected.push({
+          ...dbInfo,
+          hasBins: false,
+          hasItems: false,
+          hasPhotos: false,
+          binCount: 0,
+          itemCount: 0,
+          photoCount: 0,
+        });
+      }
+    }
+    renderRecoveryResults(inspected);
+    const candidates = inspected.filter((d) => d.binCount > 0 || d.itemCount > 0).length;
+    setRecoveryStatus(`Scan complete. Found ${inspected.length} database${inspected.length === 1 ? '' : 's'} on this origin (${candidates} with data).`);
+  } catch (err) {
+    setRecoveryStatus(`Recovery scan failed: ${err.message}`, true);
+  } finally {
+    scanBtn.disabled = false;
+  }
+});
+
+$('recovery-results').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-recovery-action]');
+  if (!btn) return;
+
+  const action = btn.dataset.recoveryAction;
+  const dbName = btn.dataset.dbName;
+  if (!dbName) return;
+
+  btn.disabled = true;
+  try {
+    if (action === 'export') {
+      setRecoveryStatus(`Building export from ${dbName}...`);
+      const payload = await extractRecoveryPayload(dbName);
+      downloadJson(payload, `binmanager-recovery-${dbName}`);
+      setRecoveryStatus(`Recovery export created from ${dbName}.`);
+      return;
+    }
+
+    if (action === 'restore') {
+      const confirmed = await confirmAction({
+        title: 'Restore Recovered Data',
+        message: `Replace current data with records recovered from ${dbName}?`,
+        confirmLabel: 'Restore',
+      });
+      if (!confirmed) {
+        setRecoveryStatus('Restore canceled.');
+        return;
+      }
+
+      setRecoveryStatus(`Restoring data from ${dbName}...`);
+      const payload = await extractRecoveryPayload(dbName);
+      await db.importAll(payload, 'replace');
+      setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportAt, new Date().toISOString());
+      setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportedFileExportedAt, payload.exportedAt);
+      refreshSyncStatus();
+      await refreshStats();
+      showToast(`Restored ${payload.bins.length} bins and ${payload.items.length} items`, 'success');
+      setRecoveryStatus(`Restore complete from ${dbName}.`);
+      showView('search');
+      await refreshSearch();
+    }
+  } catch (err) {
+    setRecoveryStatus(`Recovery ${action} failed: ${err.message}`, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // ── Data (Export / Import) ──
 
 $('data-export').addEventListener('click', async () => {
   try {
     const data = await db.exportAll();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `binmanager-export-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    downloadJson(data, 'binmanager-export');
     setSyncMetaIso(localStorage, SYNC_META_KEYS.lastExportAt, new Date().toISOString());
     refreshSyncStatus();
     showToast('Data exported successfully', 'success');
