@@ -121,6 +121,16 @@ async function getItemsByBin(binId) {
   return req(idx.getAll(binId));
 }
 
+async function getItemsByTag(tag) {
+  const needle = String(tag || '').trim().toLowerCase();
+  if (!needle) return [];
+  const items = await getAllItems();
+  return items.filter((item) =>
+    Array.isArray(item.tags) &&
+    item.tags.some((t) => String(t).trim().toLowerCase() === needle)
+  );
+}
+
 async function putItem(item) {
   await open();
   const result = await req(tx('items', 'readwrite').put(item));
@@ -188,6 +198,6 @@ function getDataVersion() {
 
 export {
   open, getAllBins, getBin, putBin, putBins, deleteBin,
-  getAllItems, getAllItemsLight, getItem, getItemsByBin, putItem, deleteItem,
+  getAllItems, getAllItemsLight, getItem, getItemsByBin, getItemsByTag, putItem, deleteItem,
   getCounts, getNextBinNumber, exportAll, importAll, getDataVersion
 };

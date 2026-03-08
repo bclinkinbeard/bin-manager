@@ -9,6 +9,7 @@ const views = {
   search: $('view-search'),
   scan: $('view-scan'),
   bin: $('view-bin'),
+  tag: $('view-tag'),
   binForm: $('view-bin-form'),
   itemForm: $('view-item-form'),
   multiCrop: $('view-multi-crop'),
@@ -35,6 +36,7 @@ let itemSortOrder = localStorage.getItem('itemSortOrder') || 'newest';
 const ITEMS_PER_PAGE = 20;
 let itemsPage = 1;
 let currentBinItems = [];
+let currentTagOriginBinId = null;
 
 // ── Custom Confirmation Modal ──
 
@@ -329,7 +331,7 @@ function renderBinItems() {
       ${item.photo && item.photo.startsWith('data:image/') ? `<img class="item-photo item-photo-preview" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}" role="button" tabindex="0" title="Tap to enlarge">` : ''}
       <div class="item-info">
         <div class="item-desc">${esc(item.description)}</div>
-        ${(item.tags && item.tags.length) ? `<div class="item-tags">${item.tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join('')}</div>` : ''}
+        ${(item.tags && item.tags.length) ? `<div class="item-tags">${item.tags.map(t => `<button type="button" class="tag-chip tag-chip-btn" data-tag="${escAttr(t)}">${esc(t)}</button>`).join('')}</div>` : ''}
         <div class="item-date">${formatDate(item.addedAt)}</div>
       </div>
       <div class="item-actions">
@@ -377,6 +379,13 @@ function renderBinItems() {
     });
   });
 
+  container.querySelectorAll('.tag-chip-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTagResults(btn.dataset.tag, currentBinId);
+    });
+  });
+
   const loadMoreBtn = container.querySelector('.load-more');
   if (loadMoreBtn) {
     loadMoreBtn.addEventListener('click', () => {
@@ -385,6 +394,64 @@ function renderBinItems() {
     });
   }
 }
+
+async function openTagResults(tag, originBinId) {
+  const normalizedTag = String(tag || '').trim().toLowerCase();
+  if (!normalizedTag) return;
+  currentTagOriginBinId = originBinId || null;
+
+  const [items, bins] = await Promise.all([
+    db.getItemsByTag(normalizedTag),
+    db.getAllBins(),
+  ]);
+  const binMap = new Map(bins.map((b) => [b.id, b]));
+  const sortedItems = sortItems(items);
+
+  $('tag-results-title').textContent = `#${normalizedTag}`;
+  $('tag-results-subtitle').textContent = `${sortedItems.length} item${sortedItems.length === 1 ? '' : 's'} with this tag`;
+
+  const container = $('tag-items-list');
+  if (sortedItems.length === 0) {
+    container.innerHTML = '<div class="empty-state">No items found for this tag.</div>';
+    showView('tag');
+    return;
+  }
+
+  container.innerHTML = sortedItems
+    .map((item) => {
+      const bin = binMap.get(item.binId);
+      return `
+      <div class="item-card" data-item-id="${esc(item.id)}">
+        ${item.photo && item.photo.startsWith('data:image/') ? `<img class="item-photo" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}">` : ''}
+        <div class="item-info">
+          <div class="item-desc">${esc(item.description)}</div>
+          ${(item.tags && item.tags.length) ? `<div class="item-tags">${item.tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join('')}</div>` : ''}
+          <div class="item-date">${esc(item.binId)}${bin && bin.name ? ` - ${esc(bin.name)}` : ''} | ${formatDate(item.addedAt)}</div>
+        </div>
+        <div class="item-actions">
+          <button class="item-edit" data-open-bin-id="${esc(item.binId)}" title="Open Bin" aria-label="Open bin ${esc(item.binId)}">&#10140;</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  container.querySelectorAll('[data-open-bin-id]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      openBin(btn.dataset.openBinId);
+    });
+  });
+
+  showView('tag');
+}
+
+$('tag-back').addEventListener('click', () => {
+  if (currentTagOriginBinId) {
+    openBin(currentTagOriginBinId);
+    return;
+  }
+  showView('search');
+  refreshSearch();
+});
 
 $('bin-back').addEventListener('click', () => {
   showView('search');
