@@ -8,6 +8,9 @@ import { parseTags } from './lib/tags.js';
 import { sortItems } from './lib/sort.js';
 import { validateImportData } from './lib/import-validation.js';
 import { formatBinId } from './lib/ids.js';
+import { createSearchView } from './views/search.js';
+import { createItemFormView } from './views/item-form.js';
+import { createBinsView } from './views/bins.js';
 import {
   parseValidIso,
   getSyncMetaIso,
@@ -40,10 +43,6 @@ let currentBinId = null;
 let currentPhoto = null;
 let currentEditItemId = null;
 let editingBin = null; // null = creating, object = editing
-let fuse = null;
-let fuseDataVersion = -1;
-let fuseEntries = null;
-let debounceTimer = null;
 let scanHandled = false;
 let itemSortOrder = localStorage.getItem('itemSortOrder') || 'newest';
 const ITEMS_PER_PAGE = 20;
@@ -61,6 +60,10 @@ const SYNC_META_KEYS = {
 let currentTag = null;
 let isApplyingRoute = false;
 let ignoreNextHashChange = false;
+let refreshSearch = async () => {};
+let renderBins = async () => {};
+let openAddItemForm = async () => {};
+let openEditItemForm = async () => {};
 
 // ── Custom Confirmation Modal ──
 const confirmAction = createConfirmAction($);
@@ -269,108 +272,55 @@ async function refreshStats() {
   statItems.textContent = c.items;
 }
 
-// ── Search ──
-
-async function buildFuse() {
-  const currentVersion = db.getDataVersion();
-  if (fuse && fuseDataVersion === currentVersion) {
-    return fuseEntries;
-  }
-
-  const bins = await db.getAllBins();
-  const items = await db.getAllItemsLight();
-  const entries = [];
-  for (const b of bins) {
-    entries.push({
-      type: 'bin',
-      id: b.id,
-      name: b.name || '',
-      location: b.location || '',
-      description: b.description || '',
-      binId: b.id,
-      archived: b.archived || false,
-    });
-  }
-  for (const item of items) {
-    entries.push({
-      type: 'item',
-      id: item.id,
-      name: item.description || '',
-      description: '',
-      binId: item.binId,
-      tags: (item.tags || []).join(' '),
-      archived: false,
-    });
-  }
-  fuse = new Fuse(entries, {
-    keys: ['id', 'name', 'location', 'description', 'tags'],
-    threshold: 0.35,
-  });
-  fuseEntries = entries;
-  fuseDataVersion = currentVersion;
-  return entries;
-}
-
-async function refreshSearch() {
-  const entries = await buildFuse();
-  const q = $('search-input').value.trim();
-  const showArchived = $('search-show-archived').checked;
-
-  let results;
-  if (q) {
-    results = fuse.search(q).map((r) => r.item);
-  } else {
-    results = entries.filter((e) => e.type === 'bin');
-  }
-
-  if (!showArchived) {
-    results = results.filter((r) => !r.archived);
-  }
-
-  renderSearchResults(results);
-  await refreshStats();
-
-  if (!isApplyingRoute && views.search.classList.contains('active')) {
-    syncRouteToUrl({ replace: true });
-  }
-}
-
-function renderSearchResults(results) {
-  const list = $('search-results');
-  const empty = $('search-empty');
-
-  if (results.length === 0) {
-    list.innerHTML = '';
-    empty.style.display = 'block';
-    return;
-  }
-
-  empty.style.display = 'none';
-  list.innerHTML = results
-    .map(
-      (r) => `
-    <li class="result-card${r.archived ? ' archived' : ''}" data-bin-id="${esc(r.binId)}" tabindex="0" role="button">
-      <div class="bin-id">${esc(r.binId)}${r.archived ? '<span class="archive-badge">Archived</span>' : ''}</div>
-      <div class="bin-name">${esc(r.name)}</div>
-      <div class="bin-meta">${r.type === 'item' ? 'Item match' : esc(r.location || '')}</div>
-    </li>`
-    )
-    .join('');
-
-  list.querySelectorAll('.result-card').forEach((card) => {
-    const handler = () => openBin(card.dataset.binId);
-    card.addEventListener('click', handler);
-    card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
-    });
-  });
-}
-
-$('search-input').addEventListener('input', () => {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => refreshSearch(), 150);
+const searchView = createSearchView({
+  db,
+  views,
+  $,
+  esc,
+  refreshStats,
+  syncRouteReplace: () => syncRouteToUrl({ replace: true }),
+  onOpenBin: (binId) => openBin(binId),
+  getIsApplyingRoute: () => isApplyingRoute,
 });
-$('search-show-archived').addEventListener('change', () => refreshSearch());
+refreshSearch = searchView.refreshSearch;
+
+const itemFormView = createItemFormView({
+  db,
+  $,
+  esc,
+  formatBinId,
+  parseTags,
+  showView,
+  openBin: (binId) => openBin(binId),
+  refreshSearch: () => refreshSearch(),
+  refreshStats,
+  showToast,
+  compressImage,
+  getCurrentBinId: () => currentBinId,
+  setCurrentBinId: (value) => {
+    currentBinId = value;
+  },
+  getCurrentPhoto: () => currentPhoto,
+  setCurrentPhoto: (value) => {
+    currentPhoto = value;
+  },
+  getCurrentEditItemId: () => currentEditItemId,
+  setCurrentEditItemId: (value) => {
+    currentEditItemId = value;
+  },
+});
+openAddItemForm = itemFormView.openAddItemForm;
+openEditItemForm = itemFormView.openEditItemForm;
+
+const binsView = createBinsView({
+  db,
+  $,
+  esc,
+  formatBinId,
+  openBin: (binId) => openBin(binId),
+  openBinForm: (id, existingBin, options) => openBinForm(id, existingBin, options),
+});
+renderBins = binsView.renderBins;
 
 // ── Scanner ──
 
@@ -683,130 +633,6 @@ $('bin-form-save').addEventListener('click', async () => {
   openBin(id);
 });
 
-// ── Item form ──
-
-async function openAddItemForm(preselectedBinId, options = {}) {
-  const { syncUrl = true } = options;
-  currentPhoto = null;
-  currentEditItemId = null;
-  $('item-form-desc').value = '';
-  $('item-form-tags').value = '';
-  $('item-photo-preview').style.display = 'none';
-  $('item-form-title').textContent = 'Add Item';
-  await populateBinSelector(preselectedBinId);
-  showView('itemForm', { syncUrl });
-}
-
-async function populateBinSelector(selectedBinId) {
-  const bins = (await db.getAllBins()).filter(b => !b.archived);
-  const select = $('item-form-bin');
-  select.innerHTML = bins.map(b =>
-    `<option value="${esc(b.id)}"${b.id === selectedBinId ? ' selected' : ''}>${esc(b.id)}${b.name ? ' — ' + esc(b.name) : ''}</option>`
-  ).join('');
-  // If opening from a bin detail, we already know the bin — hide selector
-  // If opening from search (no pre-selected bin or user wants to choose), show it
-  $('item-form-bin-group').style.display = selectedBinId ? 'none' : 'block';
-}
-
-$('search-add-item').addEventListener('click', async () => {
-  let bins = (await db.getAllBins()).filter(b => !b.archived);
-  if (bins.length === 0) {
-    const next = await db.getNextBinNumber();
-    const newBin = {
-      id: formatBinId(next),
-      name: '',
-      location: '',
-      description: '',
-      createdAt: new Date().toISOString(),
-      archived: false,
-    };
-    await db.putBin(newBin);
-    await refreshStats();
-    showToast(`Created ${newBin.id}`, 'success');
-    currentBinId = newBin.id;
-    openAddItemForm(newBin.id);
-    return;
-  }
-  currentBinId = null;
-  openAddItemForm(null);
-});
-
-async function openEditItemForm(itemId, options = {}) {
-  const { syncUrl = true } = options;
-  const item = await db.getItem(itemId);
-  if (!item) return;
-  currentEditItemId = itemId;
-  currentPhoto = item.photo || null;
-  $('item-form-desc').value = item.description || '';
-  $('item-form-tags').value = (item.tags || []).join(', ');
-  if (item.photo && item.photo.startsWith('data:image/')) {
-    $('item-photo-preview').src = item.photo;
-    $('item-photo-preview').style.display = 'block';
-  } else {
-    $('item-photo-preview').style.display = 'none';
-  }
-  $('item-form-title').textContent = 'Edit Item';
-  await populateBinSelector(item.binId);
-  showView('itemForm', { syncUrl });
-}
-
-$('item-form-back').addEventListener('click', () => {
-  currentPhoto = null;
-  if (currentBinId) {
-    openBin(currentBinId);
-  } else {
-    showView('search');
-    refreshSearch();
-  }
-});
-
-$('item-photo-btn').addEventListener('click', () => $('item-photo-input').click());
-
-$('item-photo-input').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    compressImage(ev.target.result).then((compressed) => {
-      currentPhoto = compressed;
-      $('item-photo-preview').src = currentPhoto;
-      $('item-photo-preview').style.display = 'block';
-    });
-  };
-  reader.readAsDataURL(file);
-});
-
-$('item-form-save').addEventListener('click', async () => {
-  const desc = $('item-form-desc').value.trim();
-  if (!desc) return;
-
-  const tags = parseTags($('item-form-tags').value.trim());
-
-  const itemId = currentEditItemId || crypto.randomUUID();
-  let addedAt = new Date().toISOString();
-
-  if (currentEditItemId) {
-    const existing = await db.getItem(currentEditItemId);
-    if (existing) {
-      addedAt = existing.addedAt;
-    }
-  }
-
-  const binId = $('item-form-bin').value || currentBinId;
-  await db.putItem({
-    id: itemId,
-    binId,
-    description: desc,
-    photo: currentPhoto,
-    tags,
-    addedAt,
-  });
-  currentPhoto = null;
-  currentEditItemId = null;
-  await refreshStats();
-  openBin(binId);
-});
-
 // ── Multi-Item Photo Crop ──
 
 let multiCropImage = null;    // HTMLImageElement of the loaded photo
@@ -1110,52 +936,6 @@ function compressImage(dataUrl, maxDim = 800, quality = 0.7) {
     img.src = dataUrl;
   });
 }
-
-// ── Bins ──
-
-async function renderBins() {
-  const bins = (await db.getAllBins()).filter(b => !b.archived);
-  const grid = $('bins-grid');
-
-  if (bins.length === 0) {
-    grid.innerHTML = '<div class="empty-state">No bins yet. Tap + Add Bin to create one.</div>';
-    return;
-  }
-
-  grid.innerHTML = bins
-    .map(
-      (b) => `
-    <button class="label-card label-card-btn" data-bin-id="${esc(b.id)}">
-      <canvas data-qr-id="${esc(b.id)}"></canvas>
-      <div class="label-text">${esc(b.id)}</div>
-      <div class="label-name">${esc(b.name || '')}</div>
-    </button>`
-    )
-    .join('');
-
-  // Generate QR codes in parallel
-  const canvases = grid.querySelectorAll('canvas[data-qr-id]');
-  await Promise.all(Array.from(canvases).map((canvas) =>
-    QRCode.toCanvas(canvas, canvas.dataset.qrId, {
-      width: 120,
-      margin: 1,
-      color: { dark: '#000000', light: '#ffffff' },
-    }).catch((e) => console.error('QR generation failed for', canvas.dataset.qrId, e))
-  ));
-}
-
-$('bins-grid').addEventListener('click', (e) => {
-  const card = e.target.closest('[data-bin-id]');
-  if (card) openBin(card.dataset.binId);
-});
-
-$('bins-print').addEventListener('click', () => window.print());
-
-$('bins-add').addEventListener('click', async () => {
-  const next = await db.getNextBinNumber();
-  const id = formatBinId(next);
-  openBinForm(id, null);
-});
 
 // ── Data (Export / Import) ──
 
