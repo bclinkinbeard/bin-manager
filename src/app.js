@@ -6,7 +6,7 @@ import { createConfirmAction } from './ui/modal.js';
 import { buildRouteFromState, parseRouteFromHash as parseHashRoute } from './lib/routes.js';
 import { parseTags } from './lib/tags.js';
 import { sortItems } from './lib/sort.js';
-import { validateImportData } from './lib/import-validation.js';
+import { prepareImportData } from './lib/import-validation.js';
 import { formatBinId } from './lib/ids.js';
 import { createSearchView } from './views/search.js';
 import { createItemFormView } from './views/item-form.js';
@@ -51,6 +51,8 @@ let currentBinItems = [];
 let currentTagOriginBinId = null;
 let pendingImportData = null;
 let pendingImportExportedAt = null;
+let pendingImportSummary = null;
+let pendingImportWarnings = [];
 
 const SYNC_META_KEYS = {
   lastExportAt: 'bmLastExportAt',
@@ -964,33 +966,52 @@ $('data-import-input').addEventListener('change', (e) => {
   if (!file) return;
   pendingImportData = null;
   pendingImportExportedAt = null;
+  pendingImportSummary = null;
+  pendingImportWarnings = [];
   hideImportWarning();
   const reader = new FileReader();
   reader.onload = (ev) => {
     try {
       const data = JSON.parse(ev.target.result);
-      if (!validateImportData(data)) {
+      const prepared = prepareImportData(data);
+      if (!prepared.ok) {
         pendingImportData = null;
         pendingImportExportedAt = null;
+        pendingImportSummary = null;
+        pendingImportWarnings = [];
         $('import-preview').style.display = 'none';
         confirmAction({
           title: 'Invalid File',
-          message: 'This file does not contain valid BinManager data. Expected bins and/or items arrays.',
+          message: prepared.errors.slice(0, 3).join(' '),
           confirmLabel: 'OK',
           danger: false,
         });
         return;
       }
-      pendingImportData = data;
-      pendingImportExportedAt = parseValidIso(data.exportedAt);
-      const binCount = (data.bins || []).length;
-      const itemCount = (data.items || []).length;
-      $('import-summary').textContent = `This file contains ${binCount} bin${binCount === 1 ? '' : 's'} and ${itemCount} item${itemCount === 1 ? '' : 's'}.`;
-      updateStaleImportWarning(data.exportedAt);
+      pendingImportData = prepared.data;
+      pendingImportExportedAt = parseValidIso(prepared.data.exportedAt);
+      pendingImportSummary = prepared.summary;
+      pendingImportWarnings = prepared.warnings || [];
+      const s = prepared.summary;
+      const summaryParts = [
+        `Version ${s.version}`,
+        `${s.bins} bin${s.bins === 1 ? '' : 's'}`,
+        `${s.items} item${s.items === 1 ? '' : 's'}`,
+      ];
+      if (s.archivedBins > 0) summaryParts.push(`${s.archivedBins} archived bin${s.archivedBins === 1 ? '' : 's'}`);
+      if (s.taggedItems > 0) summaryParts.push(`${s.taggedItems} tagged item${s.taggedItems === 1 ? '' : 's'}`);
+      if (s.hasPhotos) summaryParts.push('includes photos');
+      $('import-summary').textContent = summaryParts.join(' • ');
+      updateStaleImportWarning(prepared.data.exportedAt);
+      if (pendingImportWarnings.length > 0) {
+        showImportWarning(`${$('import-warning').textContent ? `${$('import-warning').textContent} ` : ''}Normalization notes: ${pendingImportWarnings.join(' ')}`);
+      }
       $('import-preview').style.display = 'block';
     } catch (err) {
       pendingImportData = null;
       pendingImportExportedAt = null;
+      pendingImportSummary = null;
+      pendingImportWarnings = [];
       hideImportWarning();
       $('import-preview').style.display = 'none';
       confirmAction({
@@ -1028,6 +1049,8 @@ $('import-confirm').addEventListener('click', async () => {
   refreshSyncStatus();
   pendingImportData = null;
   pendingImportExportedAt = null;
+  pendingImportSummary = null;
+  pendingImportWarnings = [];
   $('import-preview').style.display = 'none';
   hideImportWarning();
   await refreshStats();
@@ -1038,6 +1061,8 @@ $('import-confirm').addEventListener('click', async () => {
 $('import-cancel').addEventListener('click', () => {
   pendingImportData = null;
   pendingImportExportedAt = null;
+  pendingImportSummary = null;
+  pendingImportWarnings = [];
   $('import-preview').style.display = 'none';
   hideImportWarning();
 });

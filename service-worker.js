@@ -1,4 +1,4 @@
-const CACHE_NAME = 'binmanager-v14';
+const CACHE_NAME = 'binmanager-v15';
 const FONT_CACHE = 'binmanager-fonts-v1';
 const ASSETS = [
   './',
@@ -14,6 +14,7 @@ const ASSETS = [
   './src/lib/tags.js',
   './src/lib/sort.js',
   './src/lib/import-validation.js',
+  './src/lib/migrations.js',
   './src/lib/ids.js',
   './src/lib/sync-meta.js',
   './src/views/search.js',
