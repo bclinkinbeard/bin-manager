@@ -401,13 +401,7 @@ $('bin-edit').addEventListener('click', async () => {
 });
 
 $('bin-add-item').addEventListener('click', () => {
-  currentPhoto = null;
-  currentEditItemId = null;
-  $('item-form-desc').value = '';
-  $('item-form-tags').value = '';
-  $('item-photo-preview').style.display = 'none';
-  $('item-form-title').textContent = 'Add Item';
-  showView('itemForm');
+  openAddItemForm(currentBinId);
 });
 
 $('bin-print-contents').addEventListener('click', () => {
@@ -471,6 +465,38 @@ $('bin-form-save').addEventListener('click', async () => {
 
 // ── Item form ──
 
+async function openAddItemForm(preselectedBinId) {
+  currentPhoto = null;
+  currentEditItemId = null;
+  $('item-form-desc').value = '';
+  $('item-form-tags').value = '';
+  $('item-photo-preview').style.display = 'none';
+  $('item-form-title').textContent = 'Add Item';
+  await populateBinSelector(preselectedBinId);
+  showView('itemForm');
+}
+
+async function populateBinSelector(selectedBinId) {
+  const bins = (await db.getAllBins()).filter(b => !b.archived);
+  const select = $('item-form-bin');
+  select.innerHTML = bins.map(b =>
+    `<option value="${esc(b.id)}"${b.id === selectedBinId ? ' selected' : ''}>${esc(b.id)}${b.name ? ' — ' + esc(b.name) : ''}</option>`
+  ).join('');
+  // If opening from a bin detail, we already know the bin — hide selector
+  // If opening from search (no pre-selected bin or user wants to choose), show it
+  $('item-form-bin-group').style.display = selectedBinId ? 'none' : 'block';
+}
+
+$('search-add-item').addEventListener('click', async () => {
+  const bins = (await db.getAllBins()).filter(b => !b.archived);
+  if (bins.length === 0) {
+    showToast('Create a bin first', 'error');
+    return;
+  }
+  currentBinId = null;
+  openAddItemForm(null);
+});
+
 async function openEditItemForm(itemId) {
   const item = await db.getItem(itemId);
   if (!item) return;
@@ -485,12 +511,18 @@ async function openEditItemForm(itemId) {
     $('item-photo-preview').style.display = 'none';
   }
   $('item-form-title').textContent = 'Edit Item';
+  await populateBinSelector(item.binId);
   showView('itemForm');
 }
 
 $('item-form-back').addEventListener('click', () => {
   currentPhoto = null;
-  openBin(currentBinId);
+  if (currentBinId) {
+    openBin(currentBinId);
+  } else {
+    showView('search');
+    refreshSearch();
+  }
 });
 
 $('item-photo-btn').addEventListener('click', () => $('item-photo-input').click());
@@ -528,9 +560,10 @@ $('item-form-save').addEventListener('click', async () => {
     }
   }
 
+  const binId = $('item-form-bin').value || currentBinId;
   await db.putItem({
     id: itemId,
-    binId: currentBinId,
+    binId,
     description: desc,
     photo: currentPhoto,
     tags,
@@ -539,7 +572,7 @@ $('item-form-save').addEventListener('click', async () => {
   currentPhoto = null;
   currentEditItemId = null;
   await refreshStats();
-  openBin(currentBinId);
+  openBin(binId);
 });
 
 // ── Multi-Item Photo Crop ──
