@@ -20,8 +20,8 @@ import {
   getLatestLocalSyncMs,
 } from './lib/sync-meta.js';
 
-const APP_VERSION = '2026.03.09';
 const APP_CACHE_VERSION = 'binmanager-v29';
+const APP_VERSION = APP_CACHE_VERSION.replace(/^binmanager-/, '');
 
 // ── DOM refs ──
 
@@ -79,13 +79,10 @@ const confirmAction = createConfirmAction($);
 const showToast = createToast($);
 
 function renderAppVersion() {
-  const cacheShort = APP_CACHE_VERSION.replace(/^binmanager-/, '');
-  const headerLabel = `Build ${APP_VERSION}`;
-  const dataLabel = `${headerLabel} · Cache ${cacheShort}`;
   const headerEl = $('app-version');
   const dataEl = $('app-version-data');
-  if (headerEl) headerEl.textContent = headerLabel;
-  if (dataEl) dataEl.textContent = dataLabel;
+  if (headerEl) headerEl.textContent = APP_VERSION;
+  if (dataEl) dataEl.textContent = APP_VERSION;
 }
 
 // ── Navigation ──
