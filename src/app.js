@@ -936,8 +936,14 @@ $('multi-crop-save').addEventListener('click', async () => {
 
   for (let i = 0; i < multiCropSelections.length; i++) {
     const sel = multiCropSelections[i];
-    const desc = descs[i].value.trim() || `Item ${i + 1}`;
-    const tags = [...new Set([...sharedTags, ...parseTags(tagsInputs[i].value.trim())])];
+    const rawDesc = descs[i].value.trim();
+    const itemTags = parseTags(tagsInputs[i].value.trim());
+    const tags = [...new Set([...sharedTags, ...itemTags])];
+
+    if (!rawDesc && !tags.length) {
+      tags.push('unlabeled');
+    }
+    const desc = rawDesc || 'Unlabeled item';
 
     const photo = await compressImage(cropSelectionToDataUrl(sel));
 
