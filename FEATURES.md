@@ -1,5 +1,19 @@
 # BinManager Feature Roadmap
 
+## 0. Rename / Rebrand to Shelf Aware
+
+Goal:
+- Rebrand user-facing product name from `BinManager` to `Shelf Aware` without changing core behavior.
+
+Plan:
+- Update user-facing copy in app shell and docs (`index.html`, README, manifest fields) to `Shelf Aware`.
+- Keep data model and sync API routes stable (`/api/sync/*`) so existing local/cloud data continues working.
+- Decide identifier strategy:
+  - Keep internal technical IDs unchanged for now (ex: storage keys, cache prefixes) and only rename UI/docs in phase 1.
+  - Optionally do a phase 2 cleanup for internal names after compatibility checks.
+- Verify service worker cache/version handling when client copy changes.
+- Run regression pass for local-only/offline usage, QR flows, import/export, and cloud sync push/pull.
+
 ## 1. Cloud Sync (MVP Implemented)
 
 Implemented:
