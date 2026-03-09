@@ -1020,7 +1020,12 @@ function setupTagAutocomplete(input) {
     });
   }
 
-  input.addEventListener('input', showSuggestions);
+  input.addEventListener('input', () => {
+    const pos = input.selectionStart;
+    input.value = input.value.toLowerCase();
+    input.setSelectionRange(pos, pos);
+    showSuggestions();
+  });
   input.addEventListener('focus', showSuggestions);
   input.addEventListener('blur', () => setTimeout(removeDropdown, 150));
   input.addEventListener('keydown', (e) => {
