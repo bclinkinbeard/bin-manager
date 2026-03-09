@@ -20,8 +20,8 @@ import {
   getLatestLocalSyncMs,
 } from './lib/sync-meta.js';
 
-const APP_VERSION = '2026.03.09-v27';
-const APP_CACHE_VERSION = 'binmanager-v27';
+const APP_VERSION = '2026.03.09';
+const APP_CACHE_VERSION = 'binmanager-v29';
 
 // ── DOM refs ──
 
@@ -79,11 +79,13 @@ const confirmAction = createConfirmAction($);
 const showToast = createToast($);
 
 function renderAppVersion() {
-  const label = `${APP_VERSION} (${APP_CACHE_VERSION})`;
+  const cacheShort = APP_CACHE_VERSION.replace(/^binmanager-/, '');
+  const headerLabel = `Build ${APP_VERSION}`;
+  const dataLabel = `${headerLabel} · Cache ${cacheShort}`;
   const headerEl = $('app-version');
   const dataEl = $('app-version-data');
-  if (headerEl) headerEl.textContent = label;
-  if (dataEl) dataEl.textContent = label;
+  if (headerEl) headerEl.textContent = headerLabel;
+  if (dataEl) dataEl.textContent = dataLabel;
 }
 
 // ── Navigation ──
@@ -457,7 +459,7 @@ function renderBinItems() {
       </div>
     </div>`
     )
-    .join('') + (hasMore ? `<button class="btn btn-secondary btn-block load-more" style="margin-top:8px;">Load more (${sorted.length - paged.length} remaining)</button>` : '');
+    .join('') + (hasMore ? `<button class="btn btn-secondary btn-block load-more load-more-btn">Load more (${sorted.length - paged.length} remaining)</button>` : '');
 
   container.querySelectorAll('.item-delete').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
@@ -1511,10 +1513,10 @@ async function init() {
       await refreshSearch();
     }
   } catch (e) {
-    document.body.innerHTML = `<div style="padding:40px;text-align:center;color:#e0e0e0;font-family:monospace;">
-      <h2>Failed to initialize</h2>
-      <p style="margin-top:12px;color:#888;">${esc(e.message)}</p>
-      <p style="margin-top:8px;color:#888;">Try refreshing the page or checking browser storage settings.</p>
+    document.body.innerHTML = `<div class="fatal-init-error">
+      <h2 class="fatal-init-error-title">Failed to initialize</h2>
+      <p class="fatal-init-error-message">${esc(e.message)}</p>
+      <p class="fatal-init-error-message fatal-init-error-tip">Try refreshing the page or checking browser storage settings.</p>
     </div>`;
   }
 }

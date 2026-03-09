@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>BinManager</title>
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#121212">
+  <meta name="theme-color" content="#101722">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23121212'/><text x='50' y='68' font-size='50' text-anchor='middle' fill='%23ff9800' font-family='monospace'>B</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Space+Mono:wght@700&display=swap">
   <link rel="stylesheet" href="style.css">
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
@@ -22,11 +22,11 @@
   <!-- Header -->
   <header class="header">
     <h1>BinManager</h1>
-    <div>
+    <div class="header-meta">
       <div class="stats">
         <span id="stat-bins">0</span> bins &middot; <span id="stat-items">0</span> items
       </div>
-      <div class="app-version" id="app-version">Version loading...</div>
+      <div class="app-version" id="app-version">Loading build info...</div>
     </div>
   </header>
 
@@ -75,7 +75,7 @@
         </div>
       </div>
       <div class="sort-bar">
-        <span class="section-title" style="margin-bottom:0;">Items</span>
+        <span class="section-title section-title-inline">Items</span>
         <select id="item-sort" class="sort-select">
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
@@ -84,16 +84,16 @@
         </select>
       </div>
       <div id="bin-items-list"></div>
-      <div class="btn-row" style="margin-top:12px;">
-        <button class="btn btn-primary" id="bin-add-item" style="flex:1;">+ Add Item</button>
-        <button class="btn btn-secondary" id="bin-add-multi" style="flex:1;">+ Multi-Item Photo</button>
+      <div class="btn-row btn-row-tight">
+        <button class="btn btn-primary btn-half" id="bin-add-item">+ Add Item</button>
+        <button class="btn btn-secondary btn-half" id="bin-add-multi">+ Multi-Item Photo</button>
       </div>
     </div>
 
     <!-- Tag results view -->
     <div id="view-tag" class="view">
       <button class="btn-back" id="tag-back">&larr; Back</button>
-      <h2 style="font-size:16px;margin-bottom:6px;" id="tag-results-title"></h2>
+      <h2 class="view-title view-title-tight" id="tag-results-title"></h2>
       <p class="tag-results-subtitle" id="tag-results-subtitle"></p>
       <div id="tag-items-list"></div>
     </div>
@@ -101,7 +101,7 @@
     <!-- Create / edit bin form -->
     <div id="view-bin-form" class="view">
       <button class="btn-back" id="bin-form-back">&larr; Back</button>
-      <h2 style="font-size:16px;margin-bottom:16px;" id="bin-form-title">New Bin</h2>
+      <h2 class="view-title" id="bin-form-title">New Bin</h2>
       <div class="form-group">
         <label for="bin-form-id">Bin ID</label>
         <input type="text" id="bin-form-id" readonly>
@@ -124,10 +124,10 @@
     <!-- Add / edit item form -->
     <div id="view-item-form" class="view">
       <button class="btn-back" id="item-form-back">&larr; Back</button>
-      <h2 style="font-size:16px;margin-bottom:16px;" id="item-form-title">Add Item</h2>
+      <h2 class="view-title" id="item-form-title">Add Item</h2>
       <div class="form-group" id="item-form-bin-group">
         <label for="item-form-bin">Bin</label>
-        <select id="item-form-bin" class="sort-select" style="width:100%;padding:10px 14px;font-size:13px;"></select>
+        <select id="item-form-bin" class="sort-select select-full"></select>
       </div>
       <div class="form-group">
         <label for="item-form-desc">Description</label>
@@ -142,7 +142,7 @@
         <div class="photo-input-wrap">
           <button class="btn btn-secondary photo-btn" id="item-photo-btn">Add Photo</button>
           <img class="photo-preview" id="item-photo-preview" alt="">
-          <input type="file" accept="image/*" id="item-photo-input" style="display:none;">
+          <input type="file" accept="image/*" id="item-photo-input" class="input-hidden">
         </div>
       </div>
       <button class="btn btn-primary btn-block" id="item-form-save">Save Item</button>
@@ -160,7 +160,7 @@
     <!-- Multi-item photo crop view -->
     <div id="view-multi-crop" class="view">
       <button class="btn-back" id="multi-crop-back">&larr; Back</button>
-      <h2 style="font-size:16px;margin-bottom:12px;">Select Items in Photo</h2>
+      <h2 class="view-title view-title-compact">Select Items in Photo</h2>
       <p class="multi-crop-hint" id="multi-crop-hint">Draw rectangles around each item</p>
       <div class="multi-crop-canvas-wrap" id="multi-crop-canvas-wrap">
         <canvas id="multi-crop-canvas"></canvas>
@@ -175,13 +175,13 @@
         <input type="text" id="multi-crop-shared-tags" placeholder="e.g. electronics, sale, fragile">
       </div>
       <div id="multi-crop-items"></div>
-      <button class="btn btn-primary btn-block" id="multi-crop-save" style="margin-top:12px;" disabled>Save All Items</button>
+      <button class="btn btn-primary btn-block btn-top-gap" id="multi-crop-save" disabled>Save All Items</button>
     </div>
 
     <!-- Data management view -->
     <div id="view-data" class="view">
-      <h2 style="font-size:16px;margin-bottom:16px;">Data Management</h2>
-      <div class="app-version app-version-data" id="app-version-data">Version loading...</div>
+      <h2 class="view-title">Data Management</h2>
+      <div class="app-version app-version-data" id="app-version-data">Loading build info...</div>
       <div class="sync-panel">
         <h3 class="sync-panel-title">Sync Status (This Device)</h3>
         <div class="sync-status-row"><span>Last export</span><span id="sync-last-export">Never</span></div>
@@ -190,25 +190,25 @@
         <div class="sync-status-row"><span>Last cloud pull</span><span id="sync-last-cloud-pull">Never</span></div>
         <div class="sync-status-row"><span>Last cloud push</span><span id="sync-last-cloud-push">Never</span></div>
       </div>
-      <div class="sync-panel" style="margin-top:12px;">
+      <div class="sync-panel panel-top-gap">
         <h3 class="sync-panel-title">Cloud Sync (Sync Key)</h3>
         <div class="sync-status-row"><span>Status</span><span id="cloud-auth-status">Not connected</span></div>
         <div class="sync-status-row"><span>Cloud version</span><span id="cloud-snapshot-version">None</span></div>
         <div class="sync-status-row"><span>Cloud updated</span><span id="cloud-snapshot-updated">Never</span></div>
-        <div class="data-warning" id="cloud-user-details" style="margin-top:8px;text-align:left;">Enter a sync key (8+ chars) used on all devices.</div>
-        <div class="form-group" style="margin-top:10px;">
+        <div class="data-warning data-warning-left data-warning-top" id="cloud-user-details">Enter a sync key (8+ chars) used on all devices.</div>
+        <div class="form-group form-group-top">
           <label for="cloud-sync-key">Sync Key</label>
           <input type="password" id="cloud-sync-key" placeholder="Enter shared sync key">
         </div>
-        <div class="btn-row" style="margin-top:10px;">
+        <div class="btn-row btn-row-tight">
           <button class="btn btn-secondary" id="cloud-connect-key">Connect Key</button>
           <button class="btn btn-secondary" id="cloud-clear-key">Clear Key</button>
         </div>
-        <div class="btn-row" style="margin-top:10px;">
+        <div class="btn-row btn-row-tight">
           <button class="btn btn-secondary" id="cloud-pull" disabled>Pull From Cloud</button>
           <button class="btn btn-primary" id="cloud-push" disabled>Push To Cloud</button>
         </div>
-        <p class="data-warning" id="cloud-sync-message" style="text-align:left;margin-top:8px;color:var(--text-dim);">
+        <p class="data-warning data-warning-left data-warning-top" id="cloud-sync-message">
           Cloud sync uses full snapshot upload/download (excluding photos, which are deduplicated by hash).
         </p>
       </div>
@@ -221,25 +221,25 @@
         </ol>
       </div>
       <div class="data-actions">
-        <button class="btn btn-primary btn-block" id="data-export" style="margin-bottom:10px;">Export Data (JSON)</button>
-        <button class="btn btn-secondary btn-block" id="data-import-btn" style="margin-bottom:10px;">Import Data (JSON)</button>
-        <input type="file" accept=".json,application/json" id="data-import-input" style="display:none;">
+        <button class="btn btn-primary btn-block" id="data-export">Export Data (JSON)</button>
+        <button class="btn btn-secondary btn-block" id="data-import-btn">Import Data (JSON)</button>
+        <input type="file" accept=".json,application/json" id="data-import-input" class="input-hidden">
       </div>
-      <div class="sync-panel" style="margin-top:12px;">
+      <div class="sync-panel panel-top-gap">
         <h3 class="sync-panel-title">Recovery</h3>
-        <p class="data-warning" style="text-align:left;margin-bottom:8px;">
+        <p class="data-warning data-warning-left recovery-help">
           Scan local browser databases on this origin and recover by exporting or restoring any dataset found. If you moved domains, open the old domain on this phone to export first.
         </p>
         <button class="btn btn-secondary btn-block" id="recovery-scan-btn">Scan Databases</button>
-        <div class="import-warning" id="recovery-status" style="display:none;margin-top:10px;"></div>
-        <div id="recovery-results" class="recovery-results" style="margin-top:10px;"></div>
+        <div class="import-warning recovery-status" id="recovery-status" style="display:none;"></div>
+        <div id="recovery-results" class="recovery-results recovery-results-top"></div>
       </div>
       <div id="import-preview" style="display:none;">
         <div class="import-summary" id="import-summary"></div>
         <div class="import-warning" id="import-warning" style="display:none;"></div>
         <div class="form-group">
           <label for="import-mode">Import Mode</label>
-          <select id="import-mode" class="sort-select" style="width:100%;">
+          <select id="import-mode" class="sort-select select-full">
             <option value="merge">Merge (add missing bins/items)</option>
             <option value="replace">Replace (wipe and restore)</option>
           </select>
