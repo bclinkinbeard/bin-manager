@@ -154,6 +154,19 @@ body {
   opacity: 0.6;
 }
 
+.search-item-card {
+  cursor: pointer;
+  transition: border-color .15s;
+}
+
+.search-item-card:hover, .search-item-card:active {
+  border-color: var(--accent);
+}
+
+.search-item-card.archived {
+  opacity: 0.6;
+}
+
 .result-card .bin-id {
   font-family: 'Space Mono', monospace;
   font-size: 13px;
@@ -173,6 +186,13 @@ body {
   font-size: 11px;
   color: var(--text-dim);
   margin-top: 4px;
+}
+
+.match-highlight {
+  background: rgba(255, 152, 0, 0.28);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
 }
 
 .empty-state {
@@ -649,7 +669,7 @@ body {
   color: #fff;
 }
 
-.btn:focus-visible, .btn-back:focus-visible, .nav-btn:focus-visible, .result-card:focus-visible {
+.btn:focus-visible, .btn-back:focus-visible, .nav-btn:focus-visible, .result-card:focus-visible, .search-item-card:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
