@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "exportedAt": "2026-03-08T12:00:00.000Z",
+  "bins": [
+    {
+      "id": "BIN-001",
+      "name": "Resistors",
+      "location": "Shelf A",
+      "description": "Mixed resistor inventory for prototyping",
+      "createdAt": "2026-01-15T10:00:00.000Z",
+      "archived": false
+    },
+    {
+      "id": "BIN-002",
+      "name": "Capacitors",
+      "location": "Shelf B",
+      "description": "Ceramic and electrolytic capacitor assortments",
+      "createdAt": "2026-01-16T10:00:00.000Z",
+      "archived": true
+    },
+    {
+      "id": "BIN-003",
+      "name": "Hardware Drawer",
+      "location": "Workbench",
+      "description": "Fasteners and hand tools",
+      "createdAt": "2026-01-17T10:00:00.000Z",
+      "archived": false
+    },
+    {
+      "id": "BIN-004",
+      "name": "Office Supplies",
+      "location": "Desk Cabinet",
+      "description": "Labels, tape, and admin supplies",
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "archived": false
+    }
+  ],
+  "items": [
+    {
+      "id": "item-001",
+      "binId": "BIN-001",
+      "description": "LED Strip Kit",
+      "tags": ["electronics", "lighting"],
+      "addedAt": "2026-02-01T10:00:00.000Z"
+    },
+    {
+      "id": "item-002",
+      "binId": "BIN-001",
+      "description": "Resistor Pack 10k Ohm",
+      "tags": ["electronics", "components"],
+      "addedAt": "2026-02-02T10:00:00.000Z"
+    },
+    {
+      "id": "item-003",
+      "binId": "BIN-003",
+      "description": "Wood Screws 2in",
+      "tags": ["hardware", "fasteners"],
+      "addedAt": "2026-02-03T10:00:00.000Z"
+    },
+    {
+      "id": "item-004",
+      "binId": "BIN-003",
+      "description": "Phillips Screwdriver",
+      "tags": ["tools", "hardware"],
+      "addedAt": "2026-02-04T10:00:00.000Z"
+    },
+    {
+      "id": "item-005",
+      "binId": "BIN-004",
+      "description": "Label Tape",
+      "tags": ["office", "labeling"],
+      "addedAt": "2026-02-05T10:00:00.000Z"
+    },
+    {
+      "id": "item-006",
+      "binId": "BIN-002",
+      "description": "Vintage Capacitor Set",
+      "tags": ["electronics", "retro"],
+      "addedAt": "2026-02-06T10:00:00.000Z"
+    }
+  ]
+}
