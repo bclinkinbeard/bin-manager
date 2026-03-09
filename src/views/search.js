@@ -1,37 +1,29 @@
 function createSearchView({ db, views, $, esc, refreshStats, syncRouteReplace, onOpenBin, getIsApplyingRoute }) {
   let fuse = null;
   let fuseDataVersion = -1;
-  let fuseEntries = null;
+  let searchEntries = null;
   let debounceTimer = null;
 
   async function buildFuse() {
     const currentVersion = db.getDataVersion();
     if (fuse && fuseDataVersion === currentVersion) {
-      return fuseEntries;
+      return searchEntries;
     }
 
     const [bins, items] = await Promise.all([
       db.getAllBins(),
-      db.getAllItemsLight(),
+      db.getAllItemsWithPhotos(),
     ]);
     const binMap = new Map();
-    const browseEntries = bins.map((b) => {
+    bins.forEach((b) => {
       binMap.set(b.id, b);
-      return {
-        type: 'bin',
-        id: b.id,
-        name: b.name || '',
-        location: b.location || '',
-        binId: b.id,
-        archived: b.archived || false,
-      };
     });
-    const searchEntries = items.map((item) => {
+    searchEntries = items.map((item) => {
       const bin = binMap.get(item.binId);
       return {
-        type: 'item',
         id: item.id,
         label: item.description || '',
+        photo: item.photo || '',
         binId: item.binId,
         binName: bin && bin.name ? bin.name : '',
         tags: Array.isArray(item.tags) ? item.tags : [],
@@ -45,12 +37,8 @@ function createSearchView({ db, views, $, esc, refreshStats, syncRouteReplace, o
       includeMatches: true,
       ignoreLocation: true,
     });
-    fuseEntries = {
-      browseEntries,
-      searchEntries,
-    };
     fuseDataVersion = currentVersion;
-    return fuseEntries;
+    return searchEntries;
   }
 
   function mergeRanges(ranges) {
@@ -124,37 +112,28 @@ function createSearchView({ db, views, $, esc, refreshStats, syncRouteReplace, o
 
     if (results.length === 0) {
       list.innerHTML = '';
+      empty.textContent = isQueryActive ? 'No matching items found.' : 'No items yet. Add an item to start.';
       empty.style.display = 'block';
       return;
     }
 
     empty.style.display = 'none';
-    if (isQueryActive) {
-      list.innerHTML = results.map((r) => {
-        const { labelRanges, tagRangesByIndex } = getHighlightRanges(r.matches);
-        const label = r.label || '(No description)';
-        const tags = Array.isArray(r.tags) ? r.tags : [];
-        return `
+    list.innerHTML = results.map((r) => {
+      const { labelRanges, tagRangesByIndex } = getHighlightRanges(r.matches);
+      const label = r.label || '(No description)';
+      const tags = Array.isArray(r.tags) ? r.tags : [];
+      const hasPhoto = typeof r.photo === 'string' && r.photo.startsWith('data:image/');
+      const labelHtml = isQueryActive ? highlightByRanges(label, labelRanges) : esc(label);
+      return `
       <li class="item-card search-item-card${r.archived ? ' archived' : ''}" data-open-bin-id="${esc(r.binId)}" tabindex="0" role="button">
+        ${hasPhoto ? `<img class="item-photo" src="${esc(r.photo)}" alt="Photo of ${esc(label)}">` : ''}
         <div class="item-info">
-          <div class="item-desc">${highlightByRanges(label, labelRanges)}</div>
-          ${tags.length ? `<div class="item-tags">${tags.map((tag, index) => `<span class="tag-chip">${highlightByRanges(tag, tagRangesByIndex.get(index) || [])}</span>`).join('')}</div>` : ''}
+          <div class="item-desc">${labelHtml}</div>
+          ${tags.length ? `<div class="item-tags">${tags.map((tag, index) => `<span class="tag-chip">${isQueryActive ? highlightByRanges(tag, tagRangesByIndex.get(index) || []) : esc(tag)}</span>`).join('')}</div>` : ''}
           <div class="item-date">${esc(r.binId)}${r.binName ? ` - ${esc(r.binName)}` : ''}${r.archived ? ' - Archived' : ''}</div>
         </div>
       </li>`;
-      }).join('');
-    } else {
-      list.innerHTML = results
-        .map(
-          (r) => `
-      <li class="result-card${r.archived ? ' archived' : ''}" data-open-bin-id="${esc(r.binId)}" tabindex="0" role="button">
-        <div class="bin-id">${esc(r.binId)}${r.archived ? '<span class="archive-badge">Archived</span>' : ''}</div>
-        <div class="bin-name">${esc(r.name)}</div>
-        <div class="bin-meta">${esc(r.location || '')}</div>
-      </li>`
-        )
-        .join('');
-    }
+    }).join('');
 
     list.querySelectorAll('[data-open-bin-id]').forEach((card) => {
       const handler = () => onOpenBin(card.dataset.openBinId);
@@ -169,7 +148,7 @@ function createSearchView({ db, views, $, esc, refreshStats, syncRouteReplace, o
   }
 
   async function refreshSearch() {
-    const { browseEntries } = await buildFuse();
+    const entries = await buildFuse();
     const q = $('search-input').value.trim();
     const showArchived = $('search-show-archived').checked;
 
@@ -180,7 +159,10 @@ function createSearchView({ db, views, $, esc, refreshStats, syncRouteReplace, o
         matches: r.matches || [],
       }));
     } else {
-      results = browseEntries;
+      results = entries.map((entry) => ({
+        ...entry,
+        matches: [],
+      }));
     }
 
     if (!showArchived) {

@@ -230,6 +230,11 @@ async function getAllItems() {
   return req(tx('items', 'readonly').getAll());
 }
 
+async function getAllItemsWithPhotos() {
+  const items = await getAllItems();
+  return hydrateItemsWithPhotos(items);
+}
+
 async function getAllItemsLight() {
   await open();
   return new Promise((resolve, reject) => {
@@ -456,6 +461,7 @@ export {
   putBins,
   deleteBin,
   getAllItems,
+  getAllItemsWithPhotos,
   getAllItemsLight,
   getItem,
   getItemsByBin,
