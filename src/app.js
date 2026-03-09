@@ -955,9 +955,8 @@ $('multi-crop-save').addEventListener('click', async () => {
 
 // ── Tag Autocomplete ──
 
-let tagAutocompleteSeq = 0;
-
 function setupTagAutocomplete(input) {
+  let autocompleteSeq = 0;
   let dropdown = null;
   let selectedIndex = -1;
 
@@ -970,14 +969,14 @@ function setupTagAutocomplete(input) {
   }
 
   async function showSuggestions() {
-    const seq = ++tagAutocompleteSeq;
+    const seq = ++autocompleteSeq;
     const raw = input.value;
     const parts = raw.split(',');
     const current = parts[parts.length - 1].trim().toLowerCase();
     if (!current) { removeDropdown(); return; }
 
     const allTags = await db.getAllTags();
-    if (seq !== tagAutocompleteSeq) return;
+    if (seq !== autocompleteSeq) { removeDropdown(); return; }
 
     const alreadyUsed = new Set(parts.slice(0, -1).map(t => t.trim().toLowerCase()).filter(Boolean));
     const matches = allTags.filter(t => t.includes(current) && !alreadyUsed.has(t));
