@@ -936,7 +936,7 @@ $('multi-crop-save').addEventListener('click', async () => {
     if (!rawDesc && !tags.length) {
       tags.push('unlabeled');
     }
-    const desc = rawDesc || `Item ${i + 1}`;
+    const desc = rawDesc || 'Unlabeled item';
 
     const photo = await compressImage(cropSelectionToDataUrl(sel));
 
