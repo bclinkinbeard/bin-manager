@@ -50,8 +50,7 @@ let currentEditItemId = null;
 let editingBin = null; // null = creating, object = editing
 let scanHandled = false;
 let itemSortOrder = localStorage.getItem('itemSortOrder') || 'newest';
-const ITEMS_PER_PAGE = 20;
-let itemsPage = 1;
+let binDisplayMode = localStorage.getItem('binDisplayMode') || 'default';
 let currentBinItems = [];
 let currentTagOriginBinId = null;
 let pendingImportData = null;
@@ -425,7 +424,7 @@ async function openBin(id, options = {}) {
 
   const items = await db.getItemsByBin(id);
   currentBinItems = items;
-  itemsPage = 1;
+  $('display-mode').value = binDisplayMode;
   renderBinItems();
   showView('bin', { syncUrl });
 }
@@ -433,31 +432,41 @@ async function openBin(id, options = {}) {
 function renderBinItems() {
   const container = $('bin-items-list');
   const sorted = sortItems(currentBinItems, itemSortOrder);
-  const paged = sorted.slice(0, itemsPage * ITEMS_PER_PAGE);
-  const hasMore = sorted.length > paged.length;
+  container.className = 'bin-items-' + binDisplayMode;
 
   if (sorted.length === 0) {
     container.innerHTML = '<div class="empty-state">No items in this bin yet.</div>';
     return;
   }
 
-  container.innerHTML = paged
-    .map(
-      (item) => `
-    <div class="item-card" data-item-id="${esc(item.id)}">
-      ${item.photo && item.photo.startsWith('data:image/') ? `<img class="item-photo item-photo-preview" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}" role="button" tabindex="0" title="Tap to enlarge">` : ''}
-      <div class="item-info">
-        <div class="item-desc">${esc(item.description)}</div>
-        ${(item.tags && item.tags.length) ? `<div class="item-tags">${item.tags.map(t => `<button type="button" class="tag-chip tag-chip-btn" data-tag="${escAttr(t)}">${esc(t)}</button>`).join('')}</div>` : ''}
-        <div class="item-date">${formatDate(item.addedAt)}</div>
-      </div>
-      <div class="item-actions">
-        <button class="item-edit" data-item-id="${esc(item.id)}" title="Edit" aria-label="Edit ${esc(item.description)}">&#9998;</button>
-        <button class="item-delete" data-item-id="${esc(item.id)}" title="Delete" aria-label="Delete ${esc(item.description)}">&times;</button>
-      </div>
-    </div>`
-    )
-    .join('') + (hasMore ? `<button class="btn btn-secondary btn-block load-more" style="margin-top:8px;">Load more (${sorted.length - paged.length} remaining)</button>` : '');
+  if (binDisplayMode === 'grid') {
+    container.innerHTML = sorted
+      .filter((item) => item.photo && item.photo.startsWith('data:image/'))
+      .map(
+        (item) => `
+      <div class="grid-cell" data-item-id="${esc(item.id)}">
+        <img class="grid-cell-img item-photo-preview" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}" role="button" tabindex="0" title="Tap to enlarge">
+      </div>`)
+      .join('') || '<div class="empty-state">No photos in this bin.</div>';
+  } else {
+    const photoClass = binDisplayMode === 'large' ? 'item-photo item-photo-lg item-photo-preview' : 'item-photo item-photo-preview';
+    container.innerHTML = sorted
+      .map(
+        (item) => `
+      <div class="item-card" data-item-id="${esc(item.id)}">
+        ${item.photo && item.photo.startsWith('data:image/') ? `<img class="${photoClass}" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}" role="button" tabindex="0" title="Tap to enlarge">` : ''}
+        <div class="item-info">
+          <div class="item-desc">${esc(item.description)}</div>
+          ${(item.tags && item.tags.length) ? `<div class="item-tags">${item.tags.map(t => `<button type="button" class="tag-chip tag-chip-btn" data-tag="${escAttr(t)}">${esc(t)}</button>`).join('')}</div>` : ''}
+          <div class="item-date">${formatDate(item.addedAt)}</div>
+        </div>
+        <div class="item-actions">
+          <button class="item-edit" data-item-id="${esc(item.id)}" title="Edit" aria-label="Edit ${esc(item.description)}">&#9998;</button>
+          <button class="item-delete" data-item-id="${esc(item.id)}" title="Delete" aria-label="Delete ${esc(item.description)}">&times;</button>
+        </div>
+      </div>`)
+      .join('');
+  }
 
   container.querySelectorAll('.item-delete').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
@@ -502,14 +511,6 @@ function renderBinItems() {
       openTagResults(btn.dataset.tag, currentBinId);
     });
   });
-
-  const loadMoreBtn = container.querySelector('.load-more');
-  if (loadMoreBtn) {
-    loadMoreBtn.addEventListener('click', () => {
-      itemsPage++;
-      renderBinItems();
-    });
-  }
 }
 
 async function openTagResults(tag, originBinId, options = {}) {
@@ -625,6 +626,12 @@ $('bin-print-contents').addEventListener('click', () => {
 $('item-sort').addEventListener('change', (e) => {
   itemSortOrder = e.target.value;
   localStorage.setItem('itemSortOrder', itemSortOrder);
+  renderBinItems();
+});
+
+$('display-mode').addEventListener('change', (e) => {
+  binDisplayMode = e.target.value;
+  localStorage.setItem('binDisplayMode', binDisplayMode);
   renderBinItems();
 });
 
