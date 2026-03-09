@@ -76,12 +76,19 @@
       </div>
       <div class="sort-bar">
         <span class="section-title" style="margin-bottom:0;">Items</span>
-        <select id="item-sort" class="sort-select">
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
-          <option value="az">A &rarr; Z</option>
-          <option value="za">Z &rarr; A</option>
-        </select>
+        <div class="sort-bar-controls">
+          <select id="display-mode" class="sort-select">
+            <option value="default">Cards</option>
+            <option value="large">Large Photos</option>
+            <option value="list">List</option>
+          </select>
+          <select id="item-sort" class="sort-select">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="az">A &rarr; Z</option>
+            <option value="za">Z &rarr; A</option>
+          </select>
+        </div>
       </div>
       <div id="bin-items-list"></div>
       <div class="btn-row" style="margin-top:12px;">
