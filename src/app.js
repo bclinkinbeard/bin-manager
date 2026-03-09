@@ -432,29 +432,22 @@ async function openBin(id, options = {}) {
 function renderBinItems() {
   const container = $('bin-items-list');
   const sorted = sortItems(currentBinItems, itemSortOrder);
+  container.className = 'bin-items-' + binDisplayMode;
 
   if (sorted.length === 0) {
     container.innerHTML = '<div class="empty-state">No items in this bin yet.</div>';
     return;
   }
 
-  container.className = 'bin-items-' + binDisplayMode;
-
-  if (binDisplayMode === 'list') {
+  if (binDisplayMode === 'grid') {
     container.innerHTML = sorted
+      .filter((item) => item.photo && item.photo.startsWith('data:image/'))
       .map(
         (item) => `
-      <div class="item-row" data-item-id="${esc(item.id)}">
-        <div class="item-row-info">
-          <span class="item-row-desc">${esc(item.description)}</span>
-          ${(item.tags && item.tags.length) ? `<span class="item-row-tags">${item.tags.map(t => `<button type="button" class="tag-chip tag-chip-btn" data-tag="${escAttr(t)}">${esc(t)}</button>`).join(' ')}</span>` : ''}
-        </div>
-        <div class="item-actions">
-          <button class="item-edit" data-item-id="${esc(item.id)}" title="Edit" aria-label="Edit ${esc(item.description)}">&#9998;</button>
-          <button class="item-delete" data-item-id="${esc(item.id)}" title="Delete" aria-label="Delete ${esc(item.description)}">&times;</button>
-        </div>
+      <div class="grid-cell" data-item-id="${esc(item.id)}">
+        <img class="grid-cell-img item-photo-preview" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}" role="button" tabindex="0" title="Tap to enlarge">
       </div>`)
-      .join('');
+      .join('') || '<div class="empty-state">No photos in this bin.</div>';
   } else {
     const photoClass = binDisplayMode === 'large' ? 'item-photo item-photo-lg item-photo-preview' : 'item-photo item-photo-preview';
     container.innerHTML = sorted

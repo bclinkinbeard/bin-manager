@@ -335,43 +335,25 @@ body {
   height: 120px;
 }
 
-/* List view */
-.item-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--surface2);
-}
-
-.item-row:last-child { border-bottom: none; }
-
-.item-row-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.item-row-desc {
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.item-row-tags {
-  display: inline-flex;
+/* Image grid view */
+.bin-items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: 4px;
-  flex-wrap: wrap;
 }
 
-.bin-items-list {
-  background: var(--surface);
-  border: 1px solid var(--surface2);
+.grid-cell {
+  aspect-ratio: 1;
+  overflow: hidden;
   border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.grid-cell-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .item-card .item-info { flex: 1; min-width: 0; }
@@ -464,36 +446,6 @@ body {
 }
 
 .item-card .item-delete:hover, .item-card .item-delete:active { opacity: 1; }
-
-.item-row .item-edit,
-.item-row .item-delete {
-  background: none;
-  border: none;
-  cursor: pointer;
-  min-width: 44px;
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  opacity: .7;
-  transition: opacity .15s, color .15s;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.item-row .item-edit {
-  color: var(--text-dim);
-  font-size: 28px;
-}
-
-.item-row .item-edit:hover, .item-row .item-edit:active { opacity: 1; color: var(--accent); }
-
-.item-row .item-delete {
-  color: var(--danger);
-  font-size: 32px;
-}
-
-.item-row .item-delete:hover, .item-row .item-delete:active { opacity: 1; }
 
 .tag-results-subtitle {
   font-size: 12px;
@@ -1176,7 +1128,7 @@ body {
     margin-bottom: 0;
   }
 
-  #bin-items-list:not(.bin-items-list) {
+  #bin-items-list:not(.bin-items-grid) {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
     gap: 12px;
@@ -1240,13 +1192,7 @@ body {
   .item-card .item-date { color: #555; }
   .item-card .item-actions { display: none !important; }
 
-  .item-row {
-    border-color: #ccc;
-    color: #000;
-    break-inside: avoid;
-  }
-  .item-row .item-actions { display: none !important; }
-  .item-row-desc { color: #000; }
+  .grid-cell { break-inside: avoid; }
 
   .tag-chip {
     background: #eee;
