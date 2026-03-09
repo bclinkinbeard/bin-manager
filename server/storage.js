@@ -1,5 +1,7 @@
 import { list, put } from '@vercel/blob';
 
+const BLOB_ACCESS = 'public';
+
 function sanitizeUserId(userId) {
   return String(userId || '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
@@ -56,6 +58,7 @@ async function getJson(pathname) {
 async function putJson(pathname, data) {
   const body = JSON.stringify(data);
   const result = await put(pathname, body, {
+    access: BLOB_ACCESS,
     addRandomSuffix: false,
     allowOverwrite: true,
     contentType: 'application/json; charset=utf-8',
@@ -82,6 +85,7 @@ async function putPhotoFromDataUrl(pathname, dataUrl, explicitMimeType) {
   const { mimeType: parsedMimeType, buffer } = dataUrlToBytes(dataUrl);
   const contentType = explicitMimeType || parsedMimeType || 'application/octet-stream';
   return put(pathname, buffer, {
+    access: BLOB_ACCESS,
     addRandomSuffix: false,
     allowOverwrite: false,
     contentType,
