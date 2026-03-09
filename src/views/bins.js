@@ -23,7 +23,7 @@ function createBinsView({ db, $, esc, formatBinId, openBin, openBinForm }) {
     await Promise.all(
       Array.from(canvases).map((canvas) =>
         QRCode.toCanvas(canvas, canvas.dataset.qrId, {
-          width: 120,
+          width: 220,
           margin: 1,
           color: { dark: '#000000', light: '#ffffff' },
         }).catch((e) => console.error('QR generation failed for', canvas.dataset.qrId, e))
