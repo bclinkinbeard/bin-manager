@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/node/*.test.js"
+    "test": "node --test tests/node/*.test.js",
+    "check:cache-version": "node scripts/check-pr-cache-version.js"
   },
   "dependencies": {
     "@vercel/blob": "^0.27.0"
