@@ -124,3 +124,13 @@ When editing cached client assets:
 - Keep import/export compatibility across schema changes.
 - Do not regress offline/local-only behavior.
 - Keep cloud sync additive and optional.
+
+## Codex Workflow Requirements
+
+- Worktree creation must always start from the latest remote state: run `git pull origin <base-branch>` before creating a new worktree.
+- The first time code is pushed in a session, create a new PR for that branch. All later pushes in the same session must update that same PR (do not create additional PRs for the same branch/session).
+- After every push, provide both links in the response:
+  - PR URL for the branch.
+  - Vercel deployment URL corresponding to the latest push.
+- PR descriptions must use stable formatting and must not collapse sections. After the summary header, include an empty line before body content (two newline characters after the header line).
+- Every PR must increment the service worker version by updating `CACHE_NAME` in `service-worker.js` once for that PR.
