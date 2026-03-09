@@ -793,15 +793,23 @@ body {
 
 .label-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 16px;
 }
 
 .label-card {
   background: #fff;
   border-radius: 6px;
-  padding: 12px;
+  width: 100%;
+  max-width: 260px;
+  aspect-ratio: 1 / 1;
+  padding: 16px 12px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
 }
 
 .label-card-btn {
@@ -823,24 +831,27 @@ body {
 
 .label-card canvas {
   display: block;
-  margin: 0 auto 8px;
+  width: min(100%, 220px);
+  height: auto;
+  margin: 0 auto 10px;
 }
 
 .label-card .label-text {
   font-family: 'Space Mono', monospace;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
   color: #000;
 }
 
 .label-card .label-name {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 12px;
   color: #444;
-  margin-top: 2px;
+  margin-top: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 /* ── Data management view ── */
@@ -1114,9 +1125,9 @@ body {
     min-height: 44px;
   }
 
-  /* Label grid: 2 columns instead of 3 on small screens */
+  /* Label grid: single larger column on small screens */
   .label-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
     gap: 10px;
   }
 
@@ -1189,7 +1200,7 @@ body {
   }
 
   .label-grid {
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   }
 }
 
@@ -1204,14 +1215,15 @@ body {
 
   /* Labels print */
   .label-grid {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
   }
 
   .label-card {
     border: 1px solid #ccc;
     break-inside: avoid;
-    padding: 8px;
+    max-width: none;
+    padding: 12px;
   }
 
   /* Bin detail print */
