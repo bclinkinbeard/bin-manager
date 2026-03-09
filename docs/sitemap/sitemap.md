@@ -1,6 +1,6 @@
-# BinManager Visual Record
+# BinManager Sitemap
 
-Generated with `uvx rodney` automation after importing fixture data from `./fixtures/test-fixture-data.json`.
+Generated with `uvx rodney` automation after importing fixture data from `./fixtures/test-fixture-data.json`. This single document serves as the current visual sitemap.
 
 ## Sitemap
 
