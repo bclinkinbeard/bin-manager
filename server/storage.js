@@ -1,6 +1,13 @@
-import { list, put } from '@vercel/blob';
+import { get, head, put } from '@vercel/blob';
 
-const BLOB_ACCESS = 'public';
+const DEFAULT_BLOB_ACCESS = 'private';
+const BLOB_ACCESS = normalizeBlobAccess(
+  process.env.BLOB_ACCESS || process.env.VERCEL_BLOB_ACCESS || DEFAULT_BLOB_ACCESS
+);
+
+function normalizeBlobAccess(value) {
+  return String(value || '').trim().toLowerCase() === 'public' ? 'public' : 'private';
+}
 
 function sanitizeUserId(userId) {
   return String(userId || '').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -40,14 +47,12 @@ function isNotFoundError(error) {
 
 async function getJson(pathname) {
   try {
-    const blob = await findBlobByPathname(pathname);
-    if (!blob) return null;
-    const response = await fetch(blob.downloadUrl);
-    if (!response.ok) {
-      if (response.status === 404) return null;
-      throw new Error(`Blob fetch failed (${response.status}).`);
+    const result = await withBlobAccessRetry((access) => get(pathname, { access }));
+    if (!result) return null;
+    if (result.statusCode !== 200 || !result.stream) {
+      throw new Error(`Blob fetch failed (${result.statusCode}).`);
     }
-    const text = await response.text();
+    const text = await new Response(result.stream).text();
     return JSON.parse(text);
   } catch (error) {
     if (isNotFoundError(error)) return null;
@@ -57,18 +62,25 @@ async function getJson(pathname) {
 
 async function putJson(pathname, data) {
   const body = JSON.stringify(data);
-  const result = await put(pathname, body, {
-    access: BLOB_ACCESS,
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: 'application/json; charset=utf-8',
-  });
+  const result = await withBlobAccessRetry((access) =>
+    put(pathname, body, {
+      access,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: 'application/json; charset=utf-8',
+    })
+  );
   return result;
 }
 
 async function photoExists(pathname) {
-  const blob = await findBlobByPathname(pathname);
-  return Boolean(blob);
+  try {
+    await head(pathname);
+    return true;
+  } catch (error) {
+    if (isNotFoundError(error)) return false;
+    throw error;
+  }
 }
 
 function dataUrlToBytes(dataUrl) {
@@ -84,26 +96,27 @@ function dataUrlToBytes(dataUrl) {
 async function putPhotoFromDataUrl(pathname, dataUrl, explicitMimeType) {
   const { mimeType: parsedMimeType, buffer } = dataUrlToBytes(dataUrl);
   const contentType = explicitMimeType || parsedMimeType || 'application/octet-stream';
-  return put(pathname, buffer, {
-    access: BLOB_ACCESS,
-    addRandomSuffix: false,
-    allowOverwrite: false,
-    contentType,
-  });
+  return withBlobAccessRetry((access) =>
+    put(pathname, buffer, {
+      access,
+      addRandomSuffix: false,
+      allowOverwrite: false,
+      contentType,
+    })
+  );
 }
 
 async function getBinary(pathname) {
   try {
-    const blob = await findBlobByPathname(pathname);
-    if (!blob) return null;
-    const result = await fetch(blob.downloadUrl);
-    if (!result.ok) {
-      if (result.status === 404) return null;
-      throw new Error(`Blob fetch failed (${result.status}).`);
+    const result = await withBlobAccessRetry((access) => get(pathname, { access }));
+    if (!result) return null;
+    if (result.statusCode !== 200 || !result.stream) {
+      if (result.statusCode === 304) return null;
+      throw new Error(`Blob fetch failed (${result.statusCode}).`);
     }
     return {
-      contentType: result.headers.get('content-type') || 'application/octet-stream',
-      stream: result.body,
+      contentType: result.blob.contentType || 'application/octet-stream',
+      stream: result.stream,
     };
   } catch (error) {
     if (isNotFoundError(error)) return null;
@@ -111,12 +124,22 @@ async function getBinary(pathname) {
   }
 }
 
-async function findBlobByPathname(pathname) {
-  const result = await list({
-    prefix: pathname,
-    limit: 25,
-  });
-  return result.blobs.find((blob) => blob.pathname === pathname) || null;
+function requiredBlobAccessFromError(error) {
+  const message = String(error?.message || '');
+  const match = message.match(/access must be ["']?(public|private)["']?/i);
+  return match ? normalizeBlobAccess(match[1]) : '';
+}
+
+async function withBlobAccessRetry(runWithAccess) {
+  try {
+    return await runWithAccess(BLOB_ACCESS);
+  } catch (error) {
+    const requiredAccess = requiredBlobAccessFromError(error);
+    if (requiredAccess && requiredAccess !== BLOB_ACCESS) {
+      return runWithAccess(requiredAccess);
+    }
+    throw error;
+  }
 }
 
 function sanitizeSnapshot(snapshot) {

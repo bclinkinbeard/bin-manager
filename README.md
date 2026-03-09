@@ -66,6 +66,7 @@ vercel dev
 
 - `BLOB_READ_WRITE_TOKEN` (required)
 - `SYNC_KEY_PEPPER` (optional, recommended)
+- `BLOB_ACCESS` (optional: `private` or `public`; defaults to `private`)
 
 ## Tests
 
