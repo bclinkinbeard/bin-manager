@@ -509,6 +509,35 @@ body {
   font-size: 12px;
 }
 
+/* ── Tag Autocomplete ── */
+
+.tag-autocomplete {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 50;
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: 0 0 var(--radius) var(--radius);
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.tag-autocomplete-item {
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.tag-autocomplete-item:hover,
+.tag-autocomplete-item.active {
+  background: var(--surface2);
+  color: var(--accent);
+}
+
 /* ── Import preview ── */
 
 .import-summary {
