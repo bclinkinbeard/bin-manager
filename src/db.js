@@ -294,6 +294,35 @@ async function deleteItem(id) {
   dataVersion++;
 }
 
+// ── Tags ──
+
+async function getAllTags() {
+  await open();
+  const store = tx('items', 'readonly');
+  if (store.indexNames.contains('tags')) {
+    return new Promise((resolve, reject) => {
+      const tags = new Set();
+      const cursor = store.index('tags').openKeyCursor();
+      cursor.onsuccess = (e) => {
+        const c = e.target.result;
+        if (c) {
+          tags.add(c.key);
+          c.continue();
+        } else {
+          resolve([...tags].sort());
+        }
+      };
+      cursor.onerror = () => reject(cursor.error);
+    });
+  }
+  const items = await req(store.getAll());
+  const tags = new Set();
+  for (const item of items) {
+    for (const tag of normalizeTags(item.tags)) tags.add(tag);
+  }
+  return [...tags].sort();
+}
+
 // ── Counts ──
 
 async function getCounts() {
@@ -437,5 +466,6 @@ export {
   getNextBinNumber,
   exportAll,
   importAll,
+  getAllTags,
   getDataVersion,
 };

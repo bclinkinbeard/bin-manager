@@ -953,6 +953,107 @@ $('multi-crop-save').addEventListener('click', async () => {
   openBin(currentBinId);
 });
 
+// ── Tag Autocomplete ──
+
+let tagAutocompleteSeq = 0;
+
+function setupTagAutocomplete(input) {
+  let dropdown = null;
+  let selectedIndex = -1;
+
+  function removeDropdown() {
+    if (dropdown) {
+      dropdown.remove();
+      dropdown = null;
+    }
+    selectedIndex = -1;
+  }
+
+  async function showSuggestions() {
+    const seq = ++tagAutocompleteSeq;
+    const raw = input.value;
+    const parts = raw.split(',');
+    const current = parts[parts.length - 1].trim().toLowerCase();
+    if (!current) { removeDropdown(); return; }
+
+    const allTags = await db.getAllTags();
+    if (seq !== tagAutocompleteSeq) return;
+
+    const alreadyUsed = new Set(parts.slice(0, -1).map(t => t.trim().toLowerCase()).filter(Boolean));
+    const matches = allTags.filter(t => t.includes(current) && !alreadyUsed.has(t));
+
+    if (matches.length === 0) { removeDropdown(); return; }
+
+    if (!dropdown) {
+      dropdown = document.createElement('div');
+      dropdown.className = 'tag-autocomplete';
+      input.parentNode.style.position = 'relative';
+      input.parentNode.appendChild(dropdown);
+    }
+
+    selectedIndex = -1;
+    dropdown.innerHTML = matches.slice(0, 8).map((tag, i) =>
+      `<div class="tag-autocomplete-item" data-index="${i}" data-tag="${escAttr(tag)}">${esc(tag)}</div>`
+    ).join('');
+
+    dropdown.querySelectorAll('.tag-autocomplete-item').forEach((el) => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        pickTag(el.dataset.tag);
+      });
+    });
+  }
+
+  function pickTag(tag) {
+    const parts = input.value.split(',');
+    parts[parts.length - 1] = tag;
+    input.value = parts.map(p => p.trim()).filter(Boolean).join(', ') + ', ';
+    removeDropdown();
+    input.focus();
+  }
+
+  function updateHighlight() {
+    if (!dropdown) return;
+    const items = dropdown.querySelectorAll('.tag-autocomplete-item');
+    items.forEach((el, i) => {
+      el.classList.toggle('active', i === selectedIndex);
+    });
+  }
+
+  input.addEventListener('input', showSuggestions);
+  input.addEventListener('focus', showSuggestions);
+  input.addEventListener('blur', () => setTimeout(removeDropdown, 150));
+  input.addEventListener('keydown', (e) => {
+    if (!dropdown) return;
+    const items = dropdown.querySelectorAll('.tag-autocomplete-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+      updateHighlight();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedIndex = Math.max(selectedIndex - 1, -1);
+      updateHighlight();
+    } else if (e.key === 'Enter' && selectedIndex >= 0) {
+      e.preventDefault();
+      pickTag(items[selectedIndex].dataset.tag);
+    } else if (e.key === 'Escape') {
+      removeDropdown();
+    }
+  });
+}
+
+setupTagAutocomplete($('item-form-tags'));
+setupTagAutocomplete($('multi-crop-shared-tags'));
+
+const _origRenderMultiCropItems = renderMultiCropItems;
+renderMultiCropItems = function () {
+  _origRenderMultiCropItems();
+  $('multi-crop-items').querySelectorAll('.multi-crop-tags').forEach((input) => {
+    setupTagAutocomplete(input);
+  });
+};
+
 // ── Photo Compression ──
 
 function compressImage(dataUrl, maxDim = 800, quality = 0.7) {
