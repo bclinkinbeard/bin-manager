@@ -1184,6 +1184,7 @@ function blobToDataUrl(blob) {
 
 function setRecoveryStatus(message, isError = false) {
   const status = $('recovery-status');
+  if (!status) return;
   if (!message) {
     status.style.display = 'none';
     status.textContent = '';
@@ -1257,6 +1258,7 @@ async function inspectRecoveryDatabase(dbInfo) {
 
 function renderRecoveryResults(results) {
   const container = $('recovery-results');
+  if (!container) return;
   if (!results.length) {
     container.innerHTML = '<div class="empty-state">No local databases found on this origin.</div>';
     return;
@@ -1339,102 +1341,105 @@ async function extractRecoveryPayload(dbName) {
   }
 }
 
-$('recovery-scan-btn').addEventListener('click', async () => {
-  const scanBtn = $('recovery-scan-btn');
-  scanBtn.disabled = true;
-  setRecoveryStatus(`Scanning local databases on ${window.location.origin}...`);
-  $('recovery-results').innerHTML = '';
+const recoveryScanBtn = $('recovery-scan-btn');
+const recoveryResults = $('recovery-results');
+if (recoveryScanBtn && recoveryResults) {
+  recoveryScanBtn.addEventListener('click', async () => {
+    recoveryScanBtn.disabled = true;
+    setRecoveryStatus(`Scanning local databases on ${window.location.origin}...`);
+    recoveryResults.innerHTML = '';
 
-  try {
-    const dbs = await listRecoveryDatabases();
-    setRecoveryStatus(`Scanning ${dbs.length} database${dbs.length === 1 ? '' : 's'}...`);
-    const inspected = [];
-    for (let i = 0; i < dbs.length; i++) {
-      const dbInfo = dbs[i];
-      setRecoveryStatus(`Scanning ${i + 1}/${dbs.length}: ${dbInfo.name}...`);
-      try {
-        const result = await inspectRecoveryDatabase(dbInfo);
-        if (result) inspected.push(result);
-      } catch (_) {
-        if (dbInfo.source !== 'fallback-probe') {
-          inspected.push({
-            ...dbInfo,
-            hasBins: false,
-            hasItems: false,
-            hasPhotos: false,
-            binCount: 0,
-            itemCount: 0,
-            photoCount: 0,
-          });
+    try {
+      const dbs = await listRecoveryDatabases();
+      setRecoveryStatus(`Scanning ${dbs.length} database${dbs.length === 1 ? '' : 's'}...`);
+      const inspected = [];
+      for (let i = 0; i < dbs.length; i++) {
+        const dbInfo = dbs[i];
+        setRecoveryStatus(`Scanning ${i + 1}/${dbs.length}: ${dbInfo.name}...`);
+        try {
+          const result = await inspectRecoveryDatabase(dbInfo);
+          if (result) inspected.push(result);
+        } catch (_) {
+          if (dbInfo.source !== 'fallback-probe') {
+            inspected.push({
+              ...dbInfo,
+              hasBins: false,
+              hasItems: false,
+              hasPhotos: false,
+              binCount: 0,
+              itemCount: 0,
+              photoCount: 0,
+            });
+          }
         }
       }
+      renderRecoveryResults(inspected);
+      const candidates = inspected.filter((d) => d.binCount > 0 || d.itemCount > 0).length;
+      if (inspected.length === 0) {
+        setRecoveryStatus(`Scan complete. No databases were detected on ${window.location.origin}. If your data lived on another domain, open that domain on this phone and export there.`);
+        return;
+      }
+      if (candidates === 0) {
+        setRecoveryStatus(`Scan complete. Found ${inspected.length} database${inspected.length === 1 ? '' : 's'} on ${window.location.origin}, but none had bins/items. If you changed domains, recover from the old domain first.`);
+        return;
+      }
+      setRecoveryStatus(`Scan complete. Found ${inspected.length} database${inspected.length === 1 ? '' : 's'} on this origin (${candidates} with data).`);
+    } catch (err) {
+      setRecoveryStatus(`Recovery scan failed: ${err.message}`, true);
+    } finally {
+      recoveryScanBtn.disabled = false;
     }
-    renderRecoveryResults(inspected);
-    const candidates = inspected.filter((d) => d.binCount > 0 || d.itemCount > 0).length;
-    if (inspected.length === 0) {
-      setRecoveryStatus(`Scan complete. No databases were detected on ${window.location.origin}. If your data lived on another domain, open that domain on this phone and export there.`);
-      return;
-    }
-    if (candidates === 0) {
-      setRecoveryStatus(`Scan complete. Found ${inspected.length} database${inspected.length === 1 ? '' : 's'} on ${window.location.origin}, but none had bins/items. If you changed domains, recover from the old domain first.`);
-      return;
-    }
-    setRecoveryStatus(`Scan complete. Found ${inspected.length} database${inspected.length === 1 ? '' : 's'} on this origin (${candidates} with data).`);
-  } catch (err) {
-    setRecoveryStatus(`Recovery scan failed: ${err.message}`, true);
-  } finally {
-    scanBtn.disabled = false;
-  }
-});
+  });
 
-$('recovery-results').addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-recovery-action]');
-  if (!btn) return;
+  recoveryResults.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-recovery-action]');
+    if (!btn) return;
 
-  const action = btn.dataset.recoveryAction;
-  const dbName = btn.dataset.dbName;
-  if (!dbName) return;
+    const action = btn.dataset.recoveryAction;
+    const dbName = btn.dataset.dbName;
+    if (!dbName) return;
 
-  btn.disabled = true;
-  try {
-    if (action === 'export') {
-      setRecoveryStatus(`Building export from ${dbName}...`);
-      const payload = await extractRecoveryPayload(dbName);
-      downloadJson(payload, `binmanager-recovery-${dbName}`);
-      setRecoveryStatus(`Recovery export created from ${dbName}.`);
-      return;
-    }
-
-    if (action === 'restore') {
-      const confirmed = await confirmAction({
-        title: 'Restore Recovered Data',
-        message: `Replace current data with records recovered from ${dbName}?`,
-        confirmLabel: 'Restore',
-      });
-      if (!confirmed) {
-        setRecoveryStatus('Restore canceled.');
+    btn.disabled = true;
+    try {
+      if (action === 'export') {
+        setRecoveryStatus(`Building export from ${dbName}...`);
+        const payload = await extractRecoveryPayload(dbName);
+        downloadJson(payload, `binmanager-recovery-${dbName}`);
+        setRecoveryStatus(`Recovery export created from ${dbName}.`);
         return;
       }
 
-      setRecoveryStatus(`Restoring data from ${dbName}...`);
-      const payload = await extractRecoveryPayload(dbName);
-      const restoreResult = await db.importAll(payload, 'replace');
-      setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportAt, new Date().toISOString());
-      setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportedFileExportedAt, payload.exportedAt);
-      refreshSyncStatus();
-      await refreshStats();
-      const restoreMsg = `Restored ${payload.bins.length} bins and ${payload.items.length} items`;
-      showToast(restoreResult && restoreResult.photosFailed ? `${restoreMsg} (some photos could not be saved)` : restoreMsg, 'success');
-      setRecoveryStatus(`Restore complete from ${dbName}.`);
-      showView('search');
-      await refreshSearch();
+      if (action === 'restore') {
+        const confirmed = await confirmAction({
+          title: 'Restore Recovered Data',
+          message: `Replace current data with records recovered from ${dbName}?`,
+          confirmLabel: 'Restore',
+        });
+        if (!confirmed) {
+          setRecoveryStatus('Restore canceled.');
+          return;
+        }
+
+        setRecoveryStatus(`Restoring data from ${dbName}...`);
+        const payload = await extractRecoveryPayload(dbName);
+        const restoreResult = await db.importAll(payload, 'replace');
+        setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportAt, new Date().toISOString());
+        setSyncMetaIso(localStorage, SYNC_META_KEYS.lastImportedFileExportedAt, payload.exportedAt);
+        refreshSyncStatus();
+        await refreshStats();
+        const restoreMsg = `Restored ${payload.bins.length} bins and ${payload.items.length} items`;
+        showToast(restoreResult && restoreResult.photosFailed ? `${restoreMsg} (some photos could not be saved)` : restoreMsg, 'success');
+        setRecoveryStatus(`Restore complete from ${dbName}.`);
+        showView('search');
+        await refreshSearch();
+      }
+    } catch (err) {
+      setRecoveryStatus(`Recovery ${action} failed: ${err.message}`, true);
+    } finally {
+      btn.disabled = false;
     }
-  } catch (err) {
-    setRecoveryStatus(`Recovery ${action} failed: ${err.message}`, true);
-  } finally {
-    btn.disabled = false;
-  }
-});
+  });
+}
 
 // ── Data (Export / Import) ──
 
