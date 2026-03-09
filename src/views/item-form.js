@@ -95,9 +95,13 @@ function createItemFormView({
 
     $('item-form-save').addEventListener('click', async () => {
       const desc = $('item-form-desc').value.trim();
-      if (!desc) return;
+      const hasPhoto = getCurrentPhoto() || getCurrentPhotoId();
+      if (!desc && !hasPhoto) return;
 
       const tags = parseTags($('item-form-tags').value.trim());
+      if (!desc && !tags.length) {
+        tags.push('unlabeled');
+      }
       const currentEditId = getCurrentEditItemId();
       const itemId = currentEditId || crypto.randomUUID();
       let addedAt = new Date().toISOString();
@@ -113,7 +117,7 @@ function createItemFormView({
       await db.putItem({
         id: itemId,
         binId,
-        description: desc,
+        description: desc || 'Unlabeled item',
         photo: getCurrentPhoto(),
         photoId: getCurrentPhotoId(),
         tags,
