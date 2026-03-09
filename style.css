@@ -1,22 +1,22 @@
 :root {
-  --bg: #0f1115;
-  --bg-soft: #141821;
-  --surface: #171c26;
-  --surface2: #1f2633;
-  --surface3: #293347;
-  --accent: #f4b254;
-  --accent-dim: #da9b3f;
-  --accent-soft: rgba(244, 178, 84, 0.18);
-  --text: #eef1f7;
-  --text-dim: #a0a8b7;
-  --border: #303a4e;
-  --border-strong: #3d4a63;
-  --danger: #eb5757;
-  --success: #4caf7a;
+  --bg: #f4f6fb;
+  --bg-soft: #fcfdff;
+  --surface: #ffffff;
+  --surface2: #edf2f9;
+  --surface3: #e2eaf6;
+  --accent: #3b82f6;
+  --accent-dim: #2f6fd6;
+  --accent-soft: rgba(59, 130, 246, 0.16);
+  --text: #1f2937;
+  --text-dim: #5f6f86;
+  --border: #d6deea;
+  --border-strong: #c2cde0;
+  --danger: #cf4f4f;
+  --success: #3f9f6f;
   --radius: 12px;
   --radius-sm: 10px;
-  --shadow-sm: 0 3px 10px rgba(0, 0, 0, 0.24);
-  --shadow-md: 0 10px 24px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 4px 16px rgba(31, 41, 55, 0.08);
+  --shadow-md: 0 12px 32px rgba(31, 41, 55, 0.12);
   --app-max-width: 1200px;
 }
 
@@ -50,12 +50,12 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, var(--bg-soft), var(--bg) 30%, #0c0e12 100%);
+  background: linear-gradient(180deg, #ffffff 0%, var(--bg-soft) 18%, var(--bg) 100%);
   z-index: -1;
 }
 
 ::selection {
-  background: rgba(247, 186, 82, 0.35);
+  background: rgba(59, 130, 246, 0.24);
   color: var(--text);
 }
 
@@ -66,20 +66,21 @@ body::before {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  background: rgba(23, 28, 38, 0.96);
+  background: rgba(255, 255, 255, 0.92);
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(8px);
   position: sticky;
   top: 0;
   z-index: 10;
 }
 
 .header h1 {
-  font-family: 'Space Mono', monospace;
-  font-size: 18px;
+  font-family: 'Nunito Sans', sans-serif;
+  font-size: 21px;
   color: var(--accent);
-  letter-spacing: 0.9px;
-  text-transform: uppercase;
+  letter-spacing: 0.15px;
+  font-weight: 800;
 }
 
 .header-meta {
@@ -99,11 +100,11 @@ body::before {
 .stats span { color: var(--accent); font-weight: 700; }
 
 .app-version {
-  font-size: 10px;
-  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-family: 'Nunito Sans', sans-serif;
   color: var(--text-dim);
-  letter-spacing: 0.35px;
-  text-transform: lowercase;
+  letter-spacing: 0;
+  font-weight: 700;
 }
 
 .app-version-data {
@@ -140,9 +141,10 @@ body::before {
 }
 
 .view-title {
-  font-family: 'Space Mono', monospace;
+  font-family: 'Nunito Sans', sans-serif;
   font-size: 17px;
-  letter-spacing: 0.4px;
+  letter-spacing: 0;
+  font-weight: 700;
   margin-bottom: 16px;
 }
 
@@ -164,13 +166,13 @@ body::before {
   padding: 24px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  background: rgba(23, 28, 38, 0.98);
+  background: var(--surface);
   box-shadow: var(--shadow-sm);
   text-align: center;
 }
 
 .fatal-init-error-title {
-  font-family: 'Space Mono', monospace;
+  font-family: 'Nunito Sans', sans-serif;
   font-size: 21px;
   color: var(--accent);
 }
@@ -194,7 +196,7 @@ body::before {
 .search-box input {
   width: 100%;
   padding: 13px 16px;
-  background: rgba(23, 28, 38, 0.88);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
@@ -208,7 +210,7 @@ body::before {
 .search-box input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
-  background: rgba(23, 28, 38, 0.96);
+  background: var(--surface);
 }
 
 .search-box input::placeholder { color: var(--text-dim); }
@@ -234,7 +236,7 @@ body::before {
 .results-list { list-style: none; }
 
 .result-card {
-  background: rgba(23, 28, 38, 0.96);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: none;
@@ -246,7 +248,7 @@ body::before {
 
 .result-card:hover, .result-card:active {
   border-color: var(--accent);
-  background: rgba(28, 35, 47, 0.97);
+  background: var(--surface2);
 }
 
 .result-card.archived {
@@ -254,7 +256,7 @@ body::before {
 }
 
 .result-card .bin-id {
-  font-family: 'Space Mono', monospace;
+  font-family: inherit;
   font-size: 13px;
   color: var(--accent);
   font-weight: 700;
@@ -317,7 +319,7 @@ body::before {
 /* ── Bin detail ── */
 
 .bin-header {
-  background: rgba(23, 28, 38, 0.96);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: none;
@@ -332,7 +334,7 @@ body::before {
 }
 
 .bin-header .bin-id-large {
-  font-family: 'Space Mono', monospace;
+  font-family: inherit;
   font-size: 19px;
   color: var(--accent);
   font-weight: 700;
@@ -368,21 +370,20 @@ body::before {
 .archive-badge {
   font-size: 10px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  background: rgba(247, 186, 82, 0.18);
-  color: #ffd38a;
+  letter-spacing: 0;
+  background: rgba(59, 130, 246, 0.14);
+  color: #2858a8;
   padding: 3px 9px;
   border-radius: 999px;
-  border: 1px solid rgba(247, 186, 82, 0.5);
+  border: 1px solid rgba(59, 130, 246, 0.35);
 }
 
 .section-title {
-  font-family: 'Space Mono', monospace;
-  font-size: 13px;
+  font-family: 'Nunito Sans', sans-serif;
+  font-size: 14px;
   color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0;
+  font-weight: 700;
   margin-bottom: 10px;
 }
 
@@ -396,7 +397,7 @@ body::before {
 
 .sort-select {
   padding: 8px 12px;
-  background: rgba(23, 28, 38, 0.9);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -418,7 +419,7 @@ body::before {
 }
 
 .item-card {
-  background: rgba(23, 28, 38, 0.96);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: none;
@@ -460,8 +461,8 @@ body::before {
 .tag-chip {
   display: inline-block;
   font-size: 11px;
-  background: rgba(27, 43, 63, 0.95);
-  color: #fdd18a;
+  background: #ecf2ff;
+  color: #325ca3;
   padding: 2px 9px;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -554,8 +555,7 @@ body::before {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: .45px;
+  letter-spacing: 0;
   margin-bottom: 6px;
 }
 
@@ -563,7 +563,7 @@ body::before {
 .form-group textarea {
   width: 100%;
   padding: 11px 14px;
-  background: rgba(23, 28, 38, 0.9);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -605,7 +605,7 @@ body::before {
 /* ── Import preview ── */
 
 .import-summary {
-  background: rgba(23, 28, 38, 0.95);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px;
@@ -617,7 +617,7 @@ body::before {
 
 .sync-panel,
 .sync-checklist {
-  background: rgba(23, 28, 38, 0.95);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: none;
@@ -631,10 +631,10 @@ body::before {
 
 .sync-panel-title {
   margin: 0 0 10px 0;
-  font-family: 'Space Mono', monospace;
+  font-family: 'Nunito Sans', sans-serif;
   font-size: 12px;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  font-weight: 700;
   color: var(--text-dim);
 }
 
@@ -669,13 +669,13 @@ body::before {
 }
 
 .import-warning {
-  background: rgba(247, 186, 82, 0.11);
-  border: 1px solid rgba(247, 186, 82, 0.45);
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.34);
   border-radius: var(--radius);
   padding: 10px 12px;
   margin: -4px 0 14px 0;
   font-size: 12px;
-  color: #ffd391;
+  color: #2a58a1;
 }
 
 /* ── Buttons ── */
@@ -705,7 +705,7 @@ body::before {
 
 .btn-primary {
   background: var(--accent);
-  color: #1f1300;
+  color: #fff;
   border-color: transparent;
 }
 
@@ -714,7 +714,7 @@ body::before {
 }
 
 .btn-secondary {
-  background: rgba(31, 38, 51, 0.95);
+  background: var(--surface2);
   border-color: var(--border);
   color: var(--text);
 }
@@ -726,7 +726,7 @@ body::before {
 
 .btn-danger {
   background: var(--danger);
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: transparent;
   color: #fff;
 }
 
@@ -756,7 +756,7 @@ body::before {
 .btn-back {
   background: none;
   border: none;
-  color: #ffd38a;
+  color: var(--accent-dim);
   font-family: inherit;
   font-size: 15px;
   font-weight: 700;
@@ -784,7 +784,7 @@ body::before {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(4, 10, 18, 0.75);
+  background: rgba(31, 41, 55, 0.34);
   z-index: 100;
   align-items: center;
   justify-content: center;
@@ -805,7 +805,7 @@ body::before {
 }
 
 .modal-title {
-  font-family: 'Space Mono', monospace;
+  font-family: 'Nunito Sans', sans-serif;
   font-size: 15px;
   font-weight: 700;
   margin-bottom: 8px;
@@ -828,9 +828,9 @@ body::before {
   width: 100%;
   max-width: var(--app-max-width);
   display: flex;
-  background: rgba(23, 28, 38, 0.98);
+  background: rgba(255, 255, 255, 0.95);
   border-top: 1px solid var(--border);
-  box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 -4px 14px rgba(31, 41, 55, 0.08);
   padding-bottom: env(safe-area-inset-bottom);
   z-index: 10;
 }
@@ -845,13 +845,12 @@ body::before {
   background: none;
   border: none;
   color: var(--text-dim);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-family: inherit;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: color .15s, background .15s;
-  text-transform: uppercase;
-  letter-spacing: .5px;
+  letter-spacing: 0;
   min-height: 48px;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -861,7 +860,7 @@ body::before {
 
 .nav-btn.active, .nav-btn:hover {
   color: var(--accent);
-  background: rgba(244, 178, 84, 0.04);
+  background: rgba(59, 130, 246, 0.08);
 }
 
 .nav-btn.active svg { stroke: var(--accent); }
@@ -886,11 +885,11 @@ body::before {
   border-radius: 10px;
   padding: 12px;
   text-align: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 4px 12px rgba(31, 41, 55, 0.08);
 }
 
 .label-card-btn {
-  border: 2px solid rgba(0, 0, 0, 0.04);
+  border: 2px solid #edf2f9;
   cursor: pointer;
   transition: border-color .15s, box-shadow .15s;
 }
@@ -898,7 +897,7 @@ body::before {
 .label-card-btn:hover,
 .label-card-btn:active {
   border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.25);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
 }
 
 .label-card-btn:focus-visible {
@@ -912,7 +911,7 @@ body::before {
 }
 
 .label-card .label-text {
-  font-family: 'Space Mono', monospace;
+  font-family: 'Nunito Sans', sans-serif;
   font-size: 13px;
   font-weight: 700;
   color: #000;
@@ -981,14 +980,14 @@ body::before {
 }
 
 .recovery-card {
-  background: rgba(23, 28, 38, 0.95);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 12px;
 }
 
 .recovery-name {
-  font-family: 'Space Mono', monospace;
+  font-family: 'Nunito Sans', sans-serif;
   font-size: 12px;
   color: var(--accent);
   margin-bottom: 4px;
@@ -1021,7 +1020,7 @@ body::before {
   bottom: 70px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(31, 38, 51, 0.98);
+  background: #27364e;
   border: 1px solid var(--border-strong);
   color: var(--text);
   padding: 10px 20px;
@@ -1057,7 +1056,7 @@ body::before {
   margin-bottom: 10px;
   border-radius: var(--radius);
   overflow: hidden;
-  background: rgba(23, 28, 38, 0.95);
+  background: var(--surface);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   touch-action: none;
@@ -1091,7 +1090,7 @@ body::before {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  background: rgba(23, 28, 38, 0.95);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 11px;
@@ -1118,7 +1117,7 @@ body::before {
 }
 
 .multi-crop-num {
-  font-family: 'Space Mono', monospace;
+  font-family: 'Nunito Sans', sans-serif;
   font-size: 12px;
   color: var(--accent);
   font-weight: 700;
@@ -1128,7 +1127,7 @@ body::before {
 .multi-crop-tags {
   width: 100%;
   padding: 9px 11px;
-  background: rgba(17, 21, 29, 0.95);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -1156,7 +1155,7 @@ body::before {
   position: fixed;
   inset: 0;
   z-index: 120;
-  background: rgba(4, 8, 13, 0.9);
+  background: rgba(17, 24, 39, 0.78);
   align-items: center;
   justify-content: center;
   padding: 44px 12px 12px;
@@ -1183,7 +1182,7 @@ body::before {
   height: 44px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: rgba(23, 28, 38, 0.95);
+  background: var(--surface);
   color: var(--text);
   font-size: 22px;
   line-height: 1;
