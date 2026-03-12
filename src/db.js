@@ -3,6 +3,30 @@ const DB_VERSION = 3;
 
 let db = null;
 let dataVersion = 0;
+const readCache = {
+  bins: null,
+  items: null,
+  itemsWithPhotos: null,
+  itemsByBin: new Map(),
+  itemById: new Map(),
+  tags: null,
+  counts: null,
+};
+
+function clearReadCache() {
+  readCache.bins = null;
+  readCache.items = null;
+  readCache.itemsWithPhotos = null;
+  readCache.itemsByBin.clear();
+  readCache.itemById.clear();
+  readCache.tags = null;
+  readCache.counts = null;
+}
+
+function bumpDataVersion() {
+  dataVersion++;
+  clearReadCache();
+}
 
 function open() {
   return new Promise((resolve, reject) => {
@@ -137,6 +161,10 @@ async function hydrateItemPhoto(item) {
   if (!item) return item;
   if (isDataUrlPhoto(item.photo)) return item;
   if (!item.photoId) return item;
+  const cachedItem = readCache.itemById.get(item.id);
+  if (cachedItem && isDataUrlPhoto(cachedItem.photo)) {
+    return { ...item, photo: cachedItem.photo };
+  }
   const photoRecord = await getPhotoRecord(item.photoId);
   if (!photoRecord || !photoRecord.blob) return item;
   try {
@@ -177,7 +205,10 @@ async function ensureBlobBackedPhoto(item) {
 
 async function getAllBins() {
   await open();
-  return req(tx('bins', 'readonly').getAll());
+  if (readCache.bins) return readCache.bins;
+  const bins = await req(tx('bins', 'readonly').getAll());
+  readCache.bins = bins;
+  return bins;
 }
 
 async function getBin(id) {
@@ -188,7 +219,7 @@ async function getBin(id) {
 async function putBin(bin) {
   await open();
   const result = await req(tx('bins', 'readwrite').put(bin));
-  dataVersion++;
+  bumpDataVersion();
   return result;
 }
 
@@ -197,7 +228,8 @@ async function putBins(bins) {
   const t = db.transaction('bins', 'readwrite');
   const store = t.objectStore('bins');
   for (const bin of bins) store.put(bin);
-  return txComplete(t);
+  await txComplete(t);
+  bumpDataVersion();
 }
 
 async function getItemsByBinRaw(binId) {
@@ -220,19 +252,28 @@ async function deleteBin(id) {
   await txComplete(t);
 
   await Promise.all(photoIds.map((photoId) => deletePhotoIfUnused(photoId)));
-  dataVersion++;
+  bumpDataVersion();
 }
 
 // ── Items ──
 
 async function getAllItems() {
   await open();
-  return req(tx('items', 'readonly').getAll());
+  if (readCache.items) return readCache.items;
+  const items = await req(tx('items', 'readonly').getAll());
+  readCache.items = items;
+  return items;
 }
 
 async function getAllItemsWithPhotos() {
+  if (readCache.itemsWithPhotos) return readCache.itemsWithPhotos;
   const items = await getAllItems();
-  return hydrateItemsWithPhotos(items);
+  const hydrated = await hydrateItemsWithPhotos(items);
+  readCache.itemsWithPhotos = hydrated;
+  for (const item of hydrated) {
+    readCache.itemById.set(item.id, item);
+  }
+  return hydrated;
 }
 
 async function getAllItemsLight() {
@@ -257,13 +298,22 @@ async function getAllItemsLight() {
 
 async function getItem(id) {
   await open();
+  if (readCache.itemById.has(id)) return readCache.itemById.get(id);
   const item = await req(tx('items', 'readonly').get(id));
-  return hydrateItemPhoto(item);
+  const hydrated = await hydrateItemPhoto(item);
+  if (hydrated) readCache.itemById.set(id, hydrated);
+  return hydrated;
 }
 
 async function getItemsByBin(binId) {
+  if (readCache.itemsByBin.has(binId)) return readCache.itemsByBin.get(binId);
   const items = await getItemsByBinRaw(binId);
-  return hydrateItemsWithPhotos(items);
+  const hydrated = await hydrateItemsWithPhotos(items);
+  readCache.itemsByBin.set(binId, hydrated);
+  for (const item of hydrated) {
+    readCache.itemById.set(item.id, item);
+  }
+  return hydrated;
 }
 
 async function getItemsByTag(tag) {
@@ -285,7 +335,7 @@ async function putItem(item) {
   await open();
   const itemForStorage = await ensureBlobBackedPhoto(item);
   const result = await req(tx('items', 'readwrite').put(itemForStorage));
-  dataVersion++;
+  bumpDataVersion();
   return result;
 }
 
@@ -296,13 +346,14 @@ async function deleteItem(id) {
   if (item && item.photoId) {
     await deletePhotoIfUnused(item.photoId);
   }
-  dataVersion++;
+  bumpDataVersion();
 }
 
 // ── Tags ──
 
 async function getAllTags() {
   await open();
+  if (readCache.tags) return readCache.tags;
   const store = tx('items', 'readonly');
   if (store.indexNames.contains('tags')) {
     return new Promise((resolve, reject) => {
@@ -314,7 +365,9 @@ async function getAllTags() {
           tags.add(c.key);
           c.continue();
         } else {
-          resolve([...tags].sort());
+          const sorted = [...tags].sort();
+          readCache.tags = sorted;
+          resolve(sorted);
         }
       };
       cursor.onerror = () => reject(cursor.error);
@@ -325,16 +378,21 @@ async function getAllTags() {
   for (const item of items) {
     for (const tag of normalizeTags(item.tags)) tags.add(tag);
   }
-  return [...tags].sort();
+  const sorted = [...tags].sort();
+  readCache.tags = sorted;
+  return sorted;
 }
 
 // ── Counts ──
 
 async function getCounts() {
   await open();
+  if (readCache.counts) return readCache.counts;
   const bins = await req(tx('bins', 'readonly').count());
   const items = await req(tx('items', 'readonly').count());
-  return { bins, items };
+  const counts = { bins, items };
+  readCache.counts = counts;
+  return counts;
 }
 
 // ── Next bin number ──
@@ -426,7 +484,7 @@ async function importAll(data, mode) {
   for (const item of preparedItems) itemStore.put(item);
 
   await txComplete(t);
-  dataVersion++;
+  bumpDataVersion();
 
   // Store photo blobs in a separate transaction so failures here don't
   // roll back the bins/items saved above.
