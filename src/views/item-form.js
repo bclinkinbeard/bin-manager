@@ -9,7 +9,7 @@ function createItemFormView({
   refreshSearch,
   refreshStats,
   showToast,
-  compressImage,
+  openImagePreview,
   getCurrentBinId,
   setCurrentBinId,
   getCurrentPhoto,
@@ -19,6 +19,8 @@ function createItemFormView({
   getCurrentEditItemId,
   setCurrentEditItemId,
 }) {
+  let currentPhotos = [];
+
   async function populateBinSelector(selectedBinId) {
     const bins = (await db.getAllBins()).filter((b) => !b.archived);
     const select = $('item-form-bin');
@@ -31,6 +33,70 @@ function createItemFormView({
     $('item-form-bin-group').style.display = selectedBinId ? 'none' : 'block';
   }
 
+  function updatePhotoUiForMode(isEditing) {
+    const preview = $('item-photo-preview');
+    if (isEditing) {
+      preview.classList.add('is-editing');
+    } else {
+      preview.classList.remove('is-editing');
+    }
+  }
+
+  function setPhotos(nextPhotos) {
+    currentPhotos = (Array.isArray(nextPhotos) ? nextPhotos : []).filter((photo) => typeof photo === 'string' && photo.startsWith('data:image/'));
+    const firstPhoto = currentPhotos[0] || null;
+    setCurrentPhoto(firstPhoto);
+    setCurrentPhotoId(null);
+
+    const preview = $('item-photo-preview');
+    if (firstPhoto) {
+      preview.src = firstPhoto;
+      preview.style.display = 'block';
+      $('item-photo-delete').style.display = 'inline-flex';
+    } else {
+      preview.removeAttribute('src');
+      preview.style.display = 'none';
+      $('item-photo-delete').style.display = 'none';
+    }
+
+    const gallery = $('item-photo-gallery');
+    gallery.innerHTML = currentPhotos.slice(1).map((photo, index) => `
+      <div class="photo-gallery-item">
+        <img src="${esc(photo)}" class="photo-gallery-thumb" alt="Additional item photo ${index + 2}" role="button" tabindex="0" data-photo-index="${index + 1}">
+        <button class="btn btn-secondary photo-gallery-delete" data-delete-index="${index + 1}" type="button">Delete</button>
+      </div>
+    `).join('');
+
+    gallery.querySelectorAll('[data-photo-index]').forEach((img) => {
+      const open = () => openImagePreview(currentPhotos[Number(img.dataset.photoIndex)], `Additional item photo ${Number(img.dataset.photoIndex) + 1}`);
+      img.addEventListener('click', open);
+      img.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      });
+    });
+
+    gallery.querySelectorAll('[data-delete-index]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.deleteIndex);
+        const next = currentPhotos.filter((_, i) => i !== idx);
+        setPhotos(next);
+      });
+    });
+  }
+
+  function readFilesAsDataUrls(fileList) {
+    const files = Array.from(fileList || []).filter((file) => file && /^image\//.test(file.type));
+    return Promise.all(files.map((file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => resolve(ev.target.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    })));
+  }
+
   async function openAddItemForm(preselectedBinId, options = {}) {
     const { syncUrl = true } = options;
     setCurrentPhoto(null);
@@ -38,8 +104,9 @@ function createItemFormView({
     setCurrentEditItemId(null);
     $('item-form-desc').value = '';
     $('item-form-tags').value = '';
-    $('item-photo-preview').style.display = 'none';
     $('item-form-title').textContent = 'Add Item';
+    updatePhotoUiForMode(false);
+    setPhotos([]);
     await populateBinSelector(preselectedBinId);
     showView('itemForm', { syncUrl });
   }
@@ -49,17 +116,16 @@ function createItemFormView({
     const item = await db.getItem(itemId);
     if (!item) return;
     setCurrentEditItemId(itemId);
-    setCurrentPhoto(item.photo || null);
-    setCurrentPhotoId(item.photoId || null);
     $('item-form-desc').value = item.description || '';
     $('item-form-tags').value = (item.tags || []).join(', ');
-    if (item.photo && item.photo.startsWith('data:image/')) {
-      $('item-photo-preview').src = item.photo;
-      $('item-photo-preview').style.display = 'block';
-    } else {
-      $('item-photo-preview').style.display = 'none';
-    }
     $('item-form-title').textContent = 'Edit Item';
+    updatePhotoUiForMode(true);
+
+    const itemPhotos = Array.isArray(item.photos)
+      ? item.photos
+      : (item.photo && item.photo.startsWith('data:image/') ? [item.photo] : []);
+    setPhotos(itemPhotos);
+
     await populateBinSelector(item.binId);
     showView('itemForm', { syncUrl });
   }
@@ -68,6 +134,7 @@ function createItemFormView({
     $('item-form-back').addEventListener('click', () => {
       setCurrentPhoto(null);
       setCurrentPhotoId(null);
+      setPhotos([]);
       if (getCurrentBinId()) {
         openBin(getCurrentBinId());
       } else {
@@ -78,24 +145,27 @@ function createItemFormView({
 
     $('item-photo-btn').addEventListener('click', () => $('item-photo-input').click());
 
-    $('item-photo-input').addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        compressImage(ev.target.result).then((compressed) => {
-          setCurrentPhoto(compressed);
-          setCurrentPhotoId(null);
-          $('item-photo-preview').src = getCurrentPhoto();
-          $('item-photo-preview').style.display = 'block';
-        });
-      };
-      reader.readAsDataURL(file);
+    $('item-photo-input').addEventListener('change', async (e) => {
+      const incoming = await readFilesAsDataUrls(e.target.files);
+      if (!incoming.length) return;
+      setPhotos([...currentPhotos, ...incoming]);
+      e.target.value = '';
+    });
+
+    $('item-photo-delete').addEventListener('click', () => {
+      if (!currentPhotos.length) return;
+      setPhotos(currentPhotos.slice(1));
+    });
+
+    $('item-photo-preview').addEventListener('click', () => {
+      const src = $('item-photo-preview').src;
+      if (!src) return;
+      openImagePreview(src, 'Item photo preview');
     });
 
     $('item-form-save').addEventListener('click', async () => {
       const desc = $('item-form-desc').value.trim();
-      const hasPhoto = getCurrentPhoto() || getCurrentPhotoId();
+      const hasPhoto = currentPhotos.length > 0;
       if (!desc && !hasPhoto) return;
 
       const tags = parseTags($('item-form-tags').value.trim());
@@ -118,7 +188,8 @@ function createItemFormView({
         id: itemId,
         binId,
         description: desc || 'Unlabeled item',
-        photo: getCurrentPhoto(),
+        photo: currentPhotos[0] || null,
+        photos: currentPhotos,
         photoId: getCurrentPhotoId(),
         tags,
         addedAt,
@@ -126,6 +197,7 @@ function createItemFormView({
       setCurrentPhoto(null);
       setCurrentPhotoId(null);
       setCurrentEditItemId(null);
+      setPhotos([]);
       await refreshStats();
       openBin(binId);
     });
