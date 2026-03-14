@@ -511,18 +511,25 @@ body {
 
 .photo-input-wrap {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.photo-preview-frame,
+.photo-gallery-item {
+  position: relative;
 }
 
 .photo-input-wrap .photo-preview {
-  width: 56px;
-  height: 56px;
-  border-radius: 6px;
+  width: 112px;
+  height: 112px;
+  border-radius: 10px;
   background: var(--surface2);
   object-fit: cover;
   display: none;
   cursor: pointer;
+  border: 1px solid var(--surface2);
 }
 
 .photo-input-wrap .photo-preview.is-editing {
@@ -531,12 +538,36 @@ body {
   max-height: 320px;
   border-radius: 10px;
   object-fit: contain;
-  border: 1px solid var(--surface2);
+}
+
+.photo-delete-icon {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.68);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.photo-delete-icon:hover,
+.photo-delete-icon:active {
+  background: rgba(180, 36, 36, 0.92);
 }
 
 .photo-input-wrap .photo-btn {
-  padding: 8px 14px;
+  padding: 7px 12px;
   font-size: 12px;
+}
+
+.photo-input-wrap .photo-btn-subtle {
+  opacity: 0.85;
+  border-style: dashed;
 }
 
 .photo-gallery {
@@ -547,9 +578,6 @@ body {
 }
 
 .photo-gallery-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   width: 96px;
 }
 
@@ -560,11 +588,7 @@ body {
   border-radius: 8px;
   border: 1px solid var(--surface2);
   cursor: pointer;
-}
-
-.photo-gallery-delete {
-  padding: 6px 8px;
-  font-size: 11px;
+  display: block;
 }
 
 /* ── Tag Autocomplete ── */

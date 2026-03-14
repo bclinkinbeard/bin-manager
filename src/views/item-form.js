@@ -48,21 +48,22 @@ function createItemFormView({
     setCurrentPhotoId(null);
 
     const preview = $('item-photo-preview');
+    const previewFrame = $('item-photo-preview-frame');
     if (firstPhoto) {
       preview.src = firstPhoto;
       preview.style.display = 'block';
-      $('item-photo-delete').style.display = 'inline-flex';
+      previewFrame.style.display = 'block';
     } else {
       preview.removeAttribute('src');
       preview.style.display = 'none';
-      $('item-photo-delete').style.display = 'none';
+      previewFrame.style.display = 'none';
     }
 
     const gallery = $('item-photo-gallery');
     gallery.innerHTML = currentPhotos.slice(1).map((photo, index) => `
       <div class="photo-gallery-item">
         <img src="${esc(photo)}" class="photo-gallery-thumb" alt="Additional item photo ${index + 2}" role="button" tabindex="0" data-photo-index="${index + 1}">
-        <button class="btn btn-secondary photo-gallery-delete" data-delete-index="${index + 1}" type="button">Delete</button>
+        <button class="photo-delete-icon photo-gallery-delete" data-delete-index="${index + 1}" type="button" aria-label="Delete additional photo ${index + 2}">&times;</button>
       </div>
     `).join('');
 

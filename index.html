@@ -145,11 +145,13 @@
         <input type="text" id="item-form-tags" placeholder="e.g. electronics, spare (comma-separated)">
       </div>
       <div class="form-group">
-        <label for="item-photo-input">Photo</label>
+        <label for="item-photo-input">Photos</label>
         <div class="photo-input-wrap">
-          <button class="btn btn-secondary photo-btn" id="item-photo-btn">Add Photo</button>
-          <img class="photo-preview" id="item-photo-preview" alt="">
-          <button class="btn btn-secondary photo-btn" id="item-photo-delete" style="display:none;">Delete Photo</button>
+          <div class="photo-preview-frame" id="item-photo-preview-frame" style="display:none;">
+            <img class="photo-preview" id="item-photo-preview" alt="">
+            <button class="photo-delete-icon" id="item-photo-delete" type="button" aria-label="Delete primary photo">&times;</button>
+          </div>
+          <button class="btn btn-secondary photo-btn photo-btn-subtle" id="item-photo-btn" type="button">+ Add photo</button>
           <input type="file" accept="image/*" id="item-photo-input" style="display:none;" multiple>
         </div>
       </div>
