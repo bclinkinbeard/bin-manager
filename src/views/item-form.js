@@ -9,7 +9,6 @@ function createItemFormView({
   refreshSearch,
   refreshStats,
   showToast,
-  compressImage,
   getCurrentBinId,
   setCurrentBinId,
   getCurrentPhoto,
@@ -31,6 +30,18 @@ function createItemFormView({
     $('item-form-bin-group').style.display = selectedBinId ? 'none' : 'block';
   }
 
+  function updatePhotoUiForMode(isEditing) {
+    const preview = $('item-photo-preview');
+    const actionBtn = $('item-photo-btn');
+    if (isEditing) {
+      preview.classList.add('is-editing');
+      actionBtn.textContent = 'Replace Photo';
+    } else {
+      preview.classList.remove('is-editing');
+      actionBtn.textContent = 'Add Photo';
+    }
+  }
+
   async function openAddItemForm(preselectedBinId, options = {}) {
     const { syncUrl = true } = options;
     setCurrentPhoto(null);
@@ -40,6 +51,7 @@ function createItemFormView({
     $('item-form-tags').value = '';
     $('item-photo-preview').style.display = 'none';
     $('item-form-title').textContent = 'Add Item';
+    updatePhotoUiForMode(false);
     await populateBinSelector(preselectedBinId);
     showView('itemForm', { syncUrl });
   }
@@ -60,6 +72,7 @@ function createItemFormView({
       $('item-photo-preview').style.display = 'none';
     }
     $('item-form-title').textContent = 'Edit Item';
+    updatePhotoUiForMode(true);
     await populateBinSelector(item.binId);
     showView('itemForm', { syncUrl });
   }
@@ -83,14 +96,18 @@ function createItemFormView({
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        compressImage(ev.target.result).then((compressed) => {
-          setCurrentPhoto(compressed);
-          setCurrentPhotoId(null);
-          $('item-photo-preview').src = getCurrentPhoto();
-          $('item-photo-preview').style.display = 'block';
-        });
+        setCurrentPhoto(ev.target.result);
+        setCurrentPhotoId(null);
+        $('item-photo-preview').src = getCurrentPhoto();
+        $('item-photo-preview').style.display = 'block';
       };
       reader.readAsDataURL(file);
+    });
+
+    $('item-photo-preview').addEventListener('click', () => {
+      const src = $('item-photo-preview').src;
+      if (!src) return;
+      window.open(src, '_blank', 'noopener,noreferrer');
     });
 
     $('item-form-save').addEventListener('click', async () => {

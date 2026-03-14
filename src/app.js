@@ -300,7 +300,7 @@ const searchView = createSearchView({
   esc,
   refreshStats,
   syncRouteReplace: () => syncRouteToUrl({ replace: true }),
-  onOpenBin: (binId) => openBin(binId),
+  onOpenItem: (itemId) => openEditItemForm(itemId),
   getIsApplyingRoute: () => isApplyingRoute,
 });
 refreshSearch = searchView.refreshSearch;
