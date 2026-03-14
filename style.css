@@ -539,6 +539,34 @@ body {
   font-size: 12px;
 }
 
+.photo-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+
+.photo-gallery-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 96px;
+}
+
+.photo-gallery-thumb {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--surface2);
+  cursor: pointer;
+}
+
+.photo-gallery-delete {
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
 /* ── Tag Autocomplete ── */
 
 .tag-autocomplete {
