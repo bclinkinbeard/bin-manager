@@ -73,6 +73,17 @@ async function putJson(pathname, data) {
   return result;
 }
 
+async function putPhoto(pathname, data, contentType) {
+  return withBlobAccessRetry((access) =>
+    put(pathname, data, {
+      access,
+      addRandomSuffix: false,
+      allowOverwrite: false,
+      contentType: contentType || 'application/octet-stream',
+    })
+  );
+}
+
 async function photoExists(pathname) {
   try {
     await head(pathname);
@@ -96,14 +107,7 @@ function dataUrlToBytes(dataUrl) {
 async function putPhotoFromDataUrl(pathname, dataUrl, explicitMimeType) {
   const { mimeType: parsedMimeType, buffer } = dataUrlToBytes(dataUrl);
   const contentType = explicitMimeType || parsedMimeType || 'application/octet-stream';
-  return withBlobAccessRetry((access) =>
-    put(pathname, buffer, {
-      access,
-      addRandomSuffix: false,
-      allowOverwrite: false,
-      contentType,
-    })
-  );
+  return putPhoto(pathname, buffer, contentType);
 }
 
 async function getBinary(pathname) {
@@ -173,6 +177,7 @@ export {
   buildSnapshotId,
   getJson,
   putJson,
+  putPhoto,
   photoExists,
   putPhotoFromDataUrl,
   getBinary,

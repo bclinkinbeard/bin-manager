@@ -365,6 +365,7 @@ const cloudSyncManager = createCloudSyncManager({
   getSyncMetaIso,
   formatDateTime,
   prepareImportData,
+  compressImage,
 });
 refreshCloudSync = cloudSyncManager.refresh;
 

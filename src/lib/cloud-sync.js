@@ -1,5 +1,6 @@
 const SYNC_KEY_STORAGE = 'bmCloudSyncKey';
 const DEMO_SYNC_KEY = 'demo';
+const LEGACY_PHOTO_MAX_BYTES = 750 * 1024;
 
 function isPhotoDataUrl(value) {
   return typeof value === 'string' && value.startsWith('data:image/');
@@ -8,6 +9,15 @@ function isPhotoDataUrl(value) {
 function parseDataUrlMimeType(dataUrl) {
   const match = String(dataUrl || '').match(/^data:([^;]+);base64,/i);
   return match ? match[1] : 'application/octet-stream';
+}
+
+function estimateDataUrlBytes(dataUrl) {
+  const commaIdx = String(dataUrl || '').indexOf(',');
+  if (commaIdx < 0) return 0;
+  const base64Data = String(dataUrl).slice(commaIdx + 1);
+  const sanitized = base64Data.replace(/\s+/g, '');
+  const padding = sanitized.endsWith('==') ? 2 : sanitized.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((sanitized.length * 3) / 4) - padding);
 }
 
 function normalizeSyncKey(value) {
@@ -58,6 +68,11 @@ function blobToDataUrl(blob) {
     reader.onerror = () => reject(reader.error || new Error('Failed to read blob.'));
     reader.readAsDataURL(blob);
   });
+}
+
+async function dataUrlToBlob(dataUrl) {
+  const response = await fetch(dataUrl);
+  return response.blob();
 }
 
 function buildHeaders(syncKey, headers = {}) {
@@ -197,6 +212,71 @@ async function buildSnapshotPayload(exportData) {
   };
 }
 
+function getItemPhotoDataUrls(item) {
+  return [...new Set([
+    ...(isPhotoDataUrl(item?.photo) ? [item.photo] : []),
+    ...(Array.isArray(item?.photos) ? item.photos.filter((photo) => isPhotoDataUrl(photo)) : []),
+  ])];
+}
+
+function areStringArraysEqual(left, right) {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
+
+async function normalizeLegacyPhotosForCloud(db, compressPhoto, options = {}) {
+  const {
+    maxBytes = LEGACY_PHOTO_MAX_BYTES,
+    onProgress = () => {},
+  } = options;
+
+  if (!db || typeof db.getAllItemsWithPhotos !== 'function' || typeof db.putItem !== 'function') {
+    return 0;
+  }
+  if (typeof compressPhoto !== 'function') return 0;
+
+  const items = await db.getAllItemsWithPhotos();
+  let updatedItems = 0;
+
+  for (const item of items) {
+    const existingPhotos = getItemPhotoDataUrls(item);
+    if (existingPhotos.length === 0) continue;
+
+    let changed = false;
+    const nextPhotos = [];
+    for (let i = 0; i < existingPhotos.length; i += 1) {
+      const photo = existingPhotos[i];
+      if (estimateDataUrlBytes(photo) > maxBytes) {
+        onProgress(updatedItems + 1, item);
+        nextPhotos.push(await compressPhoto(photo));
+        changed = true;
+      } else {
+        nextPhotos.push(photo);
+      }
+    }
+
+    const dedupedPhotos = [...new Set(nextPhotos.filter((photo) => isPhotoDataUrl(photo)))];
+    if (!changed || areStringArraysEqual(existingPhotos, dedupedPhotos)) continue;
+
+    const nextItem = {
+      ...item,
+      photo: dedupedPhotos[0] || null,
+      photos: dedupedPhotos.length > 0 ? dedupedPhotos : undefined,
+      photoId: undefined,
+      photoIds: undefined,
+      photoHash: undefined,
+      photoMimeType: undefined,
+    };
+    await db.putItem(nextItem);
+    updatedItems += 1;
+  }
+
+  return updatedItems;
+}
+
 async function fetchPhotoDataUrlsByHash(hashes, syncKey) {
   const uniqueHashes = [...new Set(hashes.filter(Boolean))];
   const map = new Map();
@@ -228,6 +308,7 @@ function createCloudSyncManager(options) {
     getSyncMetaIso,
     formatDateTime,
     prepareImportData,
+    compressImage,
   } = options;
 
   let syncKey = '';
@@ -334,6 +415,15 @@ function createCloudSyncManager(options) {
     setCloudMessage($, 'Preparing snapshot...');
 
     try {
+      const normalizedCount = await normalizeLegacyPhotosForCloud(db, compressImage, {
+        onProgress: (count) => {
+          setCloudMessage($, `Optimizing cached photo ${count} for cloud sync...`);
+        },
+      });
+      if (normalizedCount > 0) {
+        await refreshStats();
+      }
+
       const exportData = await db.exportAll();
       const payload = await buildSnapshotPayload(exportData);
 
@@ -350,9 +440,13 @@ function createCloudSyncManager(options) {
         for (let i = 0; i < missingPhotos.length; i += 1) {
           const photo = missingPhotos[i];
           setCloudMessage($, `Uploading photo ${i + 1}/${missingPhotos.length}...`);
-          await apiJson('/api/sync/photo-upload', {
+          const blob = await dataUrlToBlob(photo.dataUrl);
+          await apiJson(`/api/sync/photo-upload?hash=${encodeURIComponent(photo.hash)}`, {
             method: 'POST',
-            body: JSON.stringify(photo),
+            headers: {
+              'content-type': blob.type || photo.mimeType || 'application/octet-stream',
+            },
+            body: blob,
           }, syncKey);
         }
       }
@@ -387,7 +481,10 @@ function createCloudSyncManager(options) {
       renderCloudMeta($, cloudMeta);
       updateLocalCloudLabels($, localStorage, syncMetaKeys, formatDateTime, getSyncMetaIso);
       setCloudMessage($, 'Push complete.');
-      showToast(`Cloud push complete (${payload.snapshot.bins.length} bins, ${payload.snapshot.items.length} items)`, 'success');
+      const optimizedLabel = normalizedCount > 0
+        ? `; optimized ${normalizedCount} cached item photo${normalizedCount === 1 ? '' : 's'}`
+        : '';
+      showToast(`Cloud push complete (${payload.snapshot.bins.length} bins, ${payload.snapshot.items.length} items${optimizedLabel})`, 'success');
     } catch (error) {
       setCloudMessage($, error.message || 'Push failed.', true);
       showToast(`Cloud push failed: ${error.message}`, 'error');
@@ -529,4 +626,4 @@ function createCloudSyncManager(options) {
   };
 }
 
-export { buildSnapshotPayload, createCloudSyncManager };
+export { buildSnapshotPayload, createCloudSyncManager, estimateDataUrlBytes, normalizeLegacyPhotosForCloud };

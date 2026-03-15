@@ -9,6 +9,7 @@ function createItemFormView({
   refreshSearch,
   refreshStats,
   showToast,
+  compressImage,
   getCurrentBinId,
   setCurrentBinId,
   getCurrentPhoto,
@@ -148,7 +149,10 @@ function createItemFormView({
     $('item-photo-input').addEventListener('change', async (e) => {
       const incoming = await readFilesAsDataUrls(e.target.files);
       if (!incoming.length) return;
-      setPhotos([...currentPhotos, ...incoming]);
+      const normalizedIncoming = typeof compressImage === 'function'
+        ? await Promise.all(incoming.map((photo) => compressImage(photo)))
+        : incoming;
+      setPhotos([...currentPhotos, ...normalizedIncoming]);
       e.target.value = '';
     });
 
