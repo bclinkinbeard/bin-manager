@@ -87,6 +87,17 @@ function hasPhotosStore() {
   return db.objectStoreNames.contains('photos');
 }
 
+function normalizeTags(tags) {
+  if (!Array.isArray(tags)) return [];
+  return [
+    ...new Set(
+      tags
+        .map((tag) => String(tag || '').trim().toLowerCase())
+        .filter(Boolean)
+    ),
+  ];
+}
+
 function normalizeItemForStorage(item) {
   return {
     ...item,
@@ -412,11 +423,11 @@ async function updateItemTags(itemIds, options = {}) {
       const nextTags = removeTags(mergeTags(item.tags, tagsToAdd), tagsToRemove);
       const currentTags = normalizeTagList(item.tags);
       if (nextTags.length === currentTags.length && nextTags.every((tag, index) => tag === currentTags[index])) {
-        return null;
+	return null;
       }
       return {
-        ...item,
-        tags: nextTags,
+	...item,
+	tags: nextTags,
       };
     })
     .filter(Boolean);
@@ -431,6 +442,34 @@ async function updateItemTags(itemIds, options = {}) {
   await txComplete(t);
   bumpDataVersion();
   return updatedItems.length;
+}
+
+async function moveItemsToBin(itemIds, targetBinId) {
+  await open();
+  const normalizedIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+    .map((itemId) => String(itemId || '').trim())
+    .filter(Boolean))];
+  const safeTargetBinId = String(targetBinId || '').trim();
+
+  if (!safeTargetBinId || normalizedIds.length === 0) return 0;
+
+  const t = db.transaction('items', 'readwrite');
+  const store = t.objectStore('items');
+  let movedCount = 0;
+
+  for (const itemId of normalizedIds) {
+    const item = await req(store.get(itemId));
+    if (!item || item.binId === safeTargetBinId) continue;
+    store.put({
+      ...item,
+      binId: safeTargetBinId,
+    });
+    movedCount++;
+  }
+
+  await txComplete(t);
+  if (movedCount > 0) bumpDataVersion();
+  return movedCount;
 }
 
 async function deleteItem(id) {
@@ -667,6 +706,7 @@ export {
   getItemsByTag,
   putItem,
   updateItemTags,
+  moveItemsToBin,
   deleteItem,
   getCounts,
   getNextBinNumber,

@@ -84,7 +84,7 @@
       <div class="sort-bar">
         <span class="section-title" style="margin-bottom:0;">Items</span>
         <div class="sort-bar-controls">
-          <button class="btn btn-secondary btn-sm" id="bin-batch-tags-toggle" type="button">Batch Tag</button>
+	<button class="btn btn-secondary btn-sm" id="bin-batch-tags-toggle" type="button">Batch Actions</button>
           <select id="display-mode" class="sort-select">
             <option value="default">Cards</option>
             <option value="large">Large Photos</option>
@@ -99,19 +99,23 @@
         </div>
       </div>
       <div id="bin-bulk-tags-panel" class="bulk-tags-panel" hidden>
-        <div class="bulk-tags-summary">
-          <span id="bin-bulk-selection-count">0 selected</span>
-          <div class="bulk-tags-summary-actions">
-            <button class="btn btn-secondary btn-sm" id="bin-bulk-select-all" type="button">All</button>
-            <button class="btn btn-secondary btn-sm" id="bin-bulk-clear" type="button">Clear</button>
-          </div>
-        </div>
-        <div class="bulk-tags-actions">
-          <input type="text" id="bin-bulk-tags-input" placeholder="e.g. fragile, sale">
-          <button class="btn btn-primary btn-sm" id="bin-bulk-apply" type="button">Add Tags</button>
-          <button class="btn btn-secondary btn-sm" id="bin-bulk-remove" type="button">Remove</button>
-          <button class="btn btn-secondary btn-sm" id="bin-bulk-cancel" type="button">Done</button>
-        </div>
+	<div class="bulk-tags-summary">
+	  <span id="bin-bulk-selection-count">0 selected</span>
+	  <div class="bulk-tags-summary-actions">
+	    <button class="btn btn-secondary btn-sm" id="bin-bulk-select-all" type="button">All</button>
+	    <button class="btn btn-secondary btn-sm" id="bin-bulk-clear" type="button">Clear</button>
+	  </div>
+	</div>
+	<div class="bulk-tags-actions">
+	  <input type="text" id="bin-bulk-tags-input" placeholder="e.g. fragile, sale">
+	  <button class="btn btn-primary btn-sm" id="bin-bulk-apply" type="button">Add Tags</button>
+	  <button class="btn btn-secondary btn-sm" id="bin-bulk-remove" type="button">Remove</button>
+	  <button class="btn btn-secondary btn-sm" id="bin-bulk-cancel" type="button">Done</button>
+	</div>
+	<div class="bulk-move-actions">
+	  <select id="bin-bulk-move-target" class="sort-select" aria-label="Move selected items to bin"></select>
+	  <button class="btn btn-primary btn-sm" id="bin-bulk-move" type="button">Move to Bin</button>
+	</div>
       </div>
       <div id="bin-items-list"></div>
       <div class="btn-row" style="margin-top:12px;">
