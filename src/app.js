@@ -431,15 +431,17 @@ async function openBin(id, options = {}) {
 
 function renderBinItems() {
   const container = $('bin-items-list');
-  const sorted = sortItems(currentBinItems, itemSortOrder);
-  container.className = 'bin-items-' + binDisplayMode;
+  const isPrintBinContentsMode = document.body.classList.contains('print-bin-contents-mode');
+  const sorted = sortItems(currentBinItems, isPrintBinContentsMode ? 'az' : itemSortOrder);
+  const activeDisplayMode = isPrintBinContentsMode ? 'default' : binDisplayMode;
+  container.className = 'bin-items-' + activeDisplayMode;
 
   if (sorted.length === 0) {
     container.innerHTML = '<div class="empty-state">No items in this bin yet.</div>';
     return;
   }
 
-  if (binDisplayMode === 'grid') {
+  if (activeDisplayMode === 'grid') {
     container.innerHTML = sorted
       .filter((item) => item.photo && item.photo.startsWith('data:image/'))
       .map(
@@ -449,7 +451,7 @@ function renderBinItems() {
       </div>`)
       .join('') || '<div class="empty-state">No photos in this bin.</div>';
   } else {
-    const photoClass = binDisplayMode === 'large' ? 'item-photo item-photo-lg item-photo-preview' : 'item-photo item-photo-preview';
+    const photoClass = activeDisplayMode === 'large' ? 'item-photo item-photo-lg item-photo-preview' : 'item-photo item-photo-preview';
     container.innerHTML = sorted
       .map(
         (item) => `
@@ -620,11 +622,13 @@ $('bin-add-item').addEventListener('click', () => {
 
 $('bin-print-contents').addEventListener('click', () => {
   document.body.classList.add('print-bin-contents-mode');
-  window.print();
+  renderBinItems();
+  requestAnimationFrame(() => window.print());
 });
 
 window.addEventListener('afterprint', () => {
   document.body.classList.remove('print-bin-contents-mode');
+  renderBinItems();
 });
 
 // Sort controls

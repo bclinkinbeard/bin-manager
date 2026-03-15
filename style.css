@@ -1298,19 +1298,19 @@ body {
 
   body.print-bin-contents-mode #view-bin #bin-items-list,
   body.print-bin-contents-mode #view-bin #bin-items-list.bin-items-grid {
-    display: block !important;
-    gap: 0;
+    column-count: 2;
+    column-gap: 24pt;
     margin: 0;
     padding: 0;
   }
 
   body.print-bin-contents-mode #view-bin .item-card {
-    display: block;
-    border: 0;
-    border-bottom: 1px solid #000;
+    display: inline-block;
+    width: 100%;
+    border: 1px solid #000;
     border-radius: 0;
-    margin: 0;
-    padding: 12pt 0;
+    margin: 0 0 12pt;
+    padding: 10pt 12pt;
     box-shadow: none;
     break-inside: avoid;
     page-break-inside: avoid;
