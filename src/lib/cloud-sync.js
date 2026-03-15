@@ -554,7 +554,7 @@ function createCloudSyncManager(options) {
         throw new Error((prepared.errors || ['Invalid cloud snapshot']).slice(0, 1).join(' '));
       }
 
-      await db.importAll(prepared.data, 'replace');
+      const importResult = await db.importAll(prepared.data, 'replace');
       const nowIso = new Date().toISOString();
       setSyncMetaIso(localStorage, syncMetaKeys.lastImportAt, nowIso);
       setSyncMetaIso(localStorage, syncMetaKeys.lastImportedFileExportedAt, prepared.data.exportedAt);
@@ -568,8 +568,13 @@ function createCloudSyncManager(options) {
 
       cloudMeta = pulled.meta || cloudMeta;
       renderCloudMeta($, cloudMeta);
-      setCloudMessage($, 'Pull complete.');
-      showToast(`Pulled ${prepared.data.bins.length} bins and ${prepared.data.items.length} items`, 'success');
+      if (importResult && importResult.photosFailed) {
+        setCloudMessage($, 'Pull complete, but some photos could not be cached locally. They will stay inline for now.', true);
+        showToast(`Pulled ${prepared.data.bins.length} bins and ${prepared.data.items.length} items; some photos were not cached locally`, 'error');
+      } else {
+        setCloudMessage($, 'Pull complete.');
+        showToast(`Pulled ${prepared.data.bins.length} bins and ${prepared.data.items.length} items`, 'success');
+      }
     } catch (error) {
       setCloudMessage($, error.message || 'Pull failed.', true);
       showToast(`Cloud pull failed: ${error.message}`, 'error');

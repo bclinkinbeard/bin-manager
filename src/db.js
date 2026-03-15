@@ -512,6 +512,7 @@ async function importAll(data, mode) {
 
   const photoRecords = [];
   const preparedItems = [];
+  const inlineCleanupItems = [];
   for (const item of data.items || []) {
     const normalized = normalizeItemForStorage(item);
     const incomingPhotos = getInlinePhotos(normalized);
@@ -540,13 +541,24 @@ async function importAll(data, mode) {
     }
 
     const uniquePhotoIds = [...new Set(mergedPhotoIds)];
-    preparedItems.push({
+    const preparedItem = {
       ...normalized,
-      photo: fallbackInlinePhotos[0] || null,
-      photos: fallbackInlinePhotos.length > 0 ? fallbackInlinePhotos : undefined,
+      // Keep inline photo data until blob persistence succeeds so imports still
+      // render correctly on devices that fail to write the photo store.
+      photo: incomingPhotos[0] || null,
+      photos: incomingPhotos.length > 0 ? incomingPhotos : undefined,
       photoId: uniquePhotoIds[0] || null,
       photoIds: uniquePhotoIds.length > 0 ? uniquePhotoIds : undefined,
-    });
+    };
+    preparedItems.push(preparedItem);
+
+    if (incomingPhotos.length > 0 && fallbackInlinePhotos.length === 0 && uniquePhotoIds.length > 0) {
+      inlineCleanupItems.push({
+        ...preparedItem,
+        photo: null,
+        photos: undefined,
+      });
+    }
   }
 
   // Store bins and items first in their own transaction so that a photo
@@ -582,9 +594,16 @@ async function importAll(data, mode) {
       const photoStore = pt.objectStore('photos');
       for (const photo of photoRecords) photoStore.put(photo);
       await txComplete(pt);
+
+      if (inlineCleanupItems.length > 0) {
+        const it = db.transaction('items', 'readwrite');
+        const itemStore = it.objectStore('items');
+        for (const item of inlineCleanupItems) itemStore.put(item);
+        await txComplete(it);
+      }
     } catch {
       // Photos failed to persist — items still reference their photoIds so
-      // the photos will simply be missing until the next import/sync.
+      // keep inline image data in place so the photos still render.
       photosFailed = true;
     }
   }
