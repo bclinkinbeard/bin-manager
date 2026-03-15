@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSnapshotPayload, estimateDataUrlBytes, normalizeLegacyPhotosForCloud } from '../../src/lib/cloud-sync.js';
+import {
+  buildPlainSnapshotRequestBody,
+  buildSnapshotPayload,
+  dataUrlToBlob,
+  estimateDataUrlBytes,
+  normalizeLegacyPhotosForCloud,
+  shouldRetrySnapshotPushWithGzip,
+} from '../../src/lib/cloud-sync.js';
 
 const SAMPLE_PHOTO = 'data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=';
 
@@ -30,6 +37,35 @@ test('buildSnapshotPayload strips inline photo arrays from snapshot items', asyn
 
 test('estimateDataUrlBytes returns decoded byte size', () => {
   assert.equal(estimateDataUrlBytes(SAMPLE_PHOTO), 23);
+});
+
+test('buildPlainSnapshotRequestBody wraps a pre-serialized snapshot without re-encoding it', () => {
+  const snapshotJson = JSON.stringify({
+    version: 1,
+    bins: [{ id: 'BIN-001' }],
+    items: [{ id: 'item-1', description: 'Widget "XL"' }],
+  });
+
+  assert.equal(
+    buildPlainSnapshotRequestBody(snapshotJson),
+    `{"snapshot":${snapshotJson}}`
+  );
+  assert.deepEqual(
+    JSON.parse(buildPlainSnapshotRequestBody(snapshotJson)),
+    { snapshot: JSON.parse(snapshotJson) }
+  );
+});
+
+test('shouldRetrySnapshotPushWithGzip only retries for size-related push failures', () => {
+  assert.equal(shouldRetrySnapshotPushWithGzip(new Error('Snapshot too large (3146000 bytes).')), true);
+  assert.equal(shouldRetrySnapshotPushWithGzip(new Error('Request failed (413)')), true);
+  assert.equal(shouldRetrySnapshotPushWithGzip(new Error('Missing or invalid sync key.')), false);
+});
+
+test('dataUrlToBlob decodes image data URLs without fetch()', async () => {
+  const blob = await dataUrlToBlob(SAMPLE_PHOTO);
+  assert.equal(blob.type, 'image/gif');
+  assert.equal(blob.size, 23);
 });
 
 test('normalizeLegacyPhotosForCloud rewrites oversized cached photos', async () => {
