@@ -43,7 +43,7 @@ function createItemFormView({
     select.innerHTML = bins
       .map(
         (b) =>
-          `<option value="${esc(b.id)}"${b.id === selectedBinId ? ' selected' : ''}>${esc(b.id)}${b.name ? ' — ' + esc(b.name) : ''}${b.archived ? ' (archived)' : ''}</option>`
+	  `<option value="${esc(b.id)}"${b.id === selectedBinId ? ' selected' : ''}>${esc(b.id)}${b.name ? ' — ' + esc(b.name) : ''}${b.archived ? ' (archived)' : ''}</option>`
       )
       .join('');
     $('item-form-bin-group').style.display = shouldShowBinSelector(selectedBinId, { isEditing }) ? 'block' : 'none';

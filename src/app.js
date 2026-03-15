@@ -94,6 +94,30 @@ function pruneSelectedBinItems() {
   );
 }
 
+async function renderBulkMoveTargets() {
+  const targetSelect = $('bin-bulk-move-target');
+  if (!targetSelect) return;
+
+  const currentValue = targetSelect.value;
+  const targetBins = (await db.getAllBins())
+    .filter((bin) => !bin.archived && bin.id !== currentBinId)
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  if (!targetBins.length) {
+    targetSelect.innerHTML = '<option value="">No destination bins</option>';
+    targetSelect.value = '';
+    return;
+  }
+
+  targetSelect.innerHTML = targetBins
+    .map((bin) => `<option value="${esc(bin.id)}">${esc(bin.id)}${bin.name ? ` — ${esc(bin.name)}` : ''}</option>`)
+    .join('');
+
+  if (targetBins.some((bin) => bin.id === currentValue)) {
+    targetSelect.value = currentValue;
+  }
+}
+
 function updateBulkTagUi() {
   const toggle = $('bin-batch-tags-toggle');
   const panel = $('bin-bulk-tags-panel');
@@ -103,14 +127,17 @@ function updateBulkTagUi() {
   const addBtn = $('bin-bulk-apply');
   const removeBtn = $('bin-bulk-remove');
   const input = $('bin-bulk-tags-input');
-  if (!toggle || !panel || !count || !selectAllBtn || !clearBtn || !addBtn || !removeBtn || !input) return;
+  const moveTarget = $('bin-bulk-move-target');
+  const moveBtn = $('bin-bulk-move');
+  if (!toggle || !panel || !count || !selectAllBtn || !clearBtn || !addBtn || !removeBtn || !input || !moveTarget || !moveBtn) return;
 
   pruneSelectedBinItems();
   const total = currentBinItems.length;
   const selected = selectedBinItemIds.size;
   const hasParsedTags = parseTags(input.value.trim()).length > 0;
+  const hasMoveTargets = Array.from(moveTarget.options).some((option) => option.value);
 
-  toggle.textContent = isBulkTagMode ? 'Cancel Tagging' : 'Batch Tag';
+  toggle.textContent = isBulkTagMode ? 'Done' : 'Batch Actions';
   toggle.className = isBulkTagMode ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
   panel.hidden = !isBulkTagMode;
   count.textContent = `${selected} of ${total} selected`;
@@ -118,6 +145,8 @@ function updateBulkTagUi() {
   clearBtn.disabled = selected === 0;
   addBtn.disabled = selected === 0 || !hasParsedTags;
   removeBtn.disabled = selected === 0 || !hasParsedTags;
+  moveTarget.disabled = !hasMoveTargets;
+  moveBtn.disabled = selected === 0 || !hasMoveTargets || !moveTarget.value;
 }
 
 function resetBulkTagState() {
@@ -168,8 +197,8 @@ async function applyBulkTags(mode) {
   if (updatedCount === 0) {
     showToast(
       mode === 'remove'
-        ? 'Selected items did not have those tags'
-        : 'Selected items already had those tags'
+	? 'Selected items did not have those tags'
+	: 'Selected items already had those tags'
     );
     return;
   }
@@ -182,10 +211,45 @@ async function applyBulkTags(mode) {
   );
 }
 
+async function applyBulkMove() {
+  const itemIds = [...selectedBinItemIds];
+  const targetBinId = $('bin-bulk-move-target').value;
+  if (!itemIds.length) {
+    showToast('Select at least one item', 'error');
+    return;
+  }
+  if (!targetBinId) {
+    showToast('Choose a destination bin', 'error');
+    return;
+  }
+
+  const confirmed = await confirmAction({
+    title: 'Move Items',
+    message: `Move ${itemIds.length} item${itemIds.length === 1 ? '' : 's'} to ${targetBinId}?`,
+    confirmLabel: 'Move Items',
+  });
+  if (!confirmed) return;
+
+  const movedCount = await db.moveItemsToBin(itemIds, targetBinId);
+  await refreshCurrentBinItems();
+  await refreshStats();
+
+  if (movedCount === 0) {
+    showToast('Selected items are already in that bin');
+    return;
+  }
+
+  updateBulkTagUi();
+  showToast(`Moved ${movedCount} item${movedCount === 1 ? '' : 's'} to ${targetBinId}`, 'success');
+}
+
 // ── Navigation ──
 
 function showView(name, options = {}) {
   const { syncUrl = true, replaceUrl = false } = options;
+  if (name !== 'bin' && (isBulkTagMode || selectedBinItemIds.size > 0)) {
+    resetBulkTagState();
+  }
   Object.values(views).forEach((v) => v.classList.remove('active'));
   views[name].classList.add('active');
 
@@ -527,6 +591,7 @@ async function openBin(id, options = {}) {
   const items = await db.getItemsByBin(id);
   currentBinItems = items;
   $('display-mode').value = binDisplayMode;
+  await renderBulkMoveTargets();
   renderBinItems();
   updateBulkTagUi();
   showView('bin', { syncUrl });
@@ -553,7 +618,8 @@ function renderBinItems() {
       .filter((item) => item.photo && item.photo.startsWith('data:image/'))
       .map(
         (item) => `
-      <div class="grid-cell" data-item-id="${esc(item.id)}">
+      <div class="grid-cell${isSelectableMode ? ' grid-cell-selectable' : ''}${selectedBinItemIds.has(item.id) ? ' grid-cell-selected' : ''}" data-item-id="${esc(item.id)}"${isSelectableMode ? ` data-bulk-toggle-item-id="${escAttr(item.id)}" tabindex="0" role="button" aria-pressed="${selectedBinItemIds.has(item.id) ? 'true' : 'false'}"` : ''}>
+	${isSelectableMode ? `<div class="grid-cell-select-indicator" aria-hidden="true">${selectedBinItemIds.has(item.id) ? '&#10003;' : ''}</div>` : ''}
         <img class="grid-cell-img item-photo-preview" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}" role="button" tabindex="0" title="Tap to enlarge">
       </div>`)
       .join('') || '<div class="empty-state">No photos in this bin.</div>';
@@ -561,25 +627,25 @@ function renderBinItems() {
     const photoClass = activeDisplayMode === 'large' ? 'item-photo item-photo-lg item-photo-preview' : 'item-photo item-photo-preview';
     container.innerHTML = sorted
       .map((item) => {
-        const isSelected = selectedBinItemIds.has(item.id);
-        const tagsMarkup = (item.tags && item.tags.length)
-          ? `<div class="item-tags">${item.tags.map((t) => isSelectableMode
-            ? `<span class="tag-chip">${esc(t)}</span>`
-            : `<button type="button" class="tag-chip tag-chip-btn" data-tag="${escAttr(t)}">${esc(t)}</button>`).join('')}</div>`
-          : '';
-        return `
+	const isSelected = selectedBinItemIds.has(item.id);
+	const tagsMarkup = (item.tags && item.tags.length)
+	  ? `<div class="item-tags">${item.tags.map((t) => isSelectableMode
+	    ? `<span class="tag-chip">${esc(t)}</span>`
+	    : `<button type="button" class="tag-chip tag-chip-btn" data-tag="${escAttr(t)}">${esc(t)}</button>`).join('')}</div>`
+	  : '';
+	return `
       <div class="item-card${isSelectableMode ? ' item-card-selectable' : ''}${isSelected ? ' item-card-selected' : ''}" data-item-id="${esc(item.id)}"${isSelectableMode ? ` data-bulk-toggle-item-id="${escAttr(item.id)}" tabindex="0" role="button" aria-pressed="${isSelected ? 'true' : 'false'}"` : ''}>
-        ${isSelectableMode ? `<div class="item-select-marker" aria-hidden="true">${isSelected ? '&#10003;' : ''}</div>` : ''}
-        ${item.photo && item.photo.startsWith('data:image/') ? `<img class="${photoClass}" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}"${isSelectableMode ? '' : ' role="button" tabindex="0" title="Tap to enlarge"'}>` : ''}
+	${isSelectableMode ? `<div class="item-select-marker" aria-hidden="true">${isSelected ? '&#10003;' : ''}</div>` : ''}
+	${item.photo && item.photo.startsWith('data:image/') ? `<img class="${photoClass}" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}"${isSelectableMode ? '' : ' role="button" tabindex="0" title="Tap to enlarge"'}>` : ''}
         <div class="item-info">
           <div class="item-desc">${esc(item.description)}</div>
-          ${tagsMarkup}
+	  ${tagsMarkup}
           <div class="item-date">${formatDate(item.addedAt)}</div>
         </div>
-        ${isSelectableMode ? '' : `<div class="item-actions">
+	${isSelectableMode ? '' : `<div class="item-actions">
           <button class="item-edit" data-item-id="${esc(item.id)}" title="Edit" aria-label="Edit ${esc(item.description)}">&#9998;</button>
           <button class="item-delete" data-item-id="${esc(item.id)}" title="Delete" aria-label="Delete ${esc(item.description)}">&times;</button>
-        </div>`}
+	</div>`}
       </div>`;
       })
       .join('');
@@ -590,9 +656,9 @@ function renderBinItems() {
       const toggle = () => toggleBulkTagSelection(el.dataset.bulkToggleItemId);
       el.addEventListener('click', toggle);
       el.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        toggle();
+	if (e.key !== 'Enter' && e.key !== ' ') return;
+	e.preventDefault();
+	toggle();
       });
     });
     updateBulkTagUi();
@@ -793,6 +859,14 @@ $('bin-bulk-apply').addEventListener('click', async () => {
 
 $('bin-bulk-remove').addEventListener('click', async () => {
   await applyBulkTags('remove');
+});
+
+$('bin-bulk-move-target').addEventListener('change', () => {
+  updateBulkTagUi();
+});
+
+$('bin-bulk-move').addEventListener('click', async () => {
+  await applyBulkMove();
 });
 
 function renderPrintBinSummary() {
