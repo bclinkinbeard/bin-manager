@@ -1,3 +1,18 @@
+function shouldShowBinSelector(selectedBinId, options = {}) {
+  const { isEditing = false } = options;
+  return isEditing || !selectedBinId;
+}
+
+function getSelectableBins(bins, selectedBinId) {
+  const activeBins = (Array.isArray(bins) ? bins : []).filter((bin) => !bin.archived);
+  if (!selectedBinId || activeBins.some((bin) => bin.id === selectedBinId)) {
+    return activeBins;
+  }
+
+  const selectedBin = (Array.isArray(bins) ? bins : []).find((bin) => bin.id === selectedBinId);
+  return selectedBin ? [selectedBin, ...activeBins] : activeBins;
+}
+
 function createItemFormView({
   db,
   $,
@@ -21,16 +36,17 @@ function createItemFormView({
 }) {
   let currentPhotos = [];
 
-  async function populateBinSelector(selectedBinId) {
-    const bins = (await db.getAllBins()).filter((b) => !b.archived);
+  async function populateBinSelector(selectedBinId, options = {}) {
+    const { isEditing = false } = options;
+    const bins = getSelectableBins(await db.getAllBins(), selectedBinId);
     const select = $('item-form-bin');
     select.innerHTML = bins
       .map(
         (b) =>
-          `<option value="${esc(b.id)}"${b.id === selectedBinId ? ' selected' : ''}>${esc(b.id)}${b.name ? ' — ' + esc(b.name) : ''}</option>`
+          `<option value="${esc(b.id)}"${b.id === selectedBinId ? ' selected' : ''}>${esc(b.id)}${b.name ? ' — ' + esc(b.name) : ''}${b.archived ? ' (archived)' : ''}</option>`
       )
       .join('');
-    $('item-form-bin-group').style.display = selectedBinId ? 'none' : 'block';
+    $('item-form-bin-group').style.display = shouldShowBinSelector(selectedBinId, { isEditing }) ? 'block' : 'none';
   }
 
   function updatePhotoUiForMode(isEditing) {
@@ -127,7 +143,7 @@ function createItemFormView({
       : (item.photo && item.photo.startsWith('data:image/') ? [item.photo] : []);
     setPhotos(itemPhotos);
 
-    await populateBinSelector(item.binId);
+    await populateBinSelector(item.binId, { isEditing: true });
     showView('itemForm', { syncUrl });
   }
 
@@ -239,3 +255,4 @@ function createItemFormView({
 }
 
 export { createItemFormView };
+export { getSelectableBins, shouldShowBinSelector };
