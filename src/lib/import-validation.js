@@ -60,6 +60,21 @@ function normalizeItem(item, nowIso) {
     normalized.photoId = item.photoId.trim();
   }
 
+  if (Array.isArray(item.photos)) {
+    normalized.photos = item.photos
+      .filter((photo) => typeof photo === 'string' && photo)
+      .map((photo) => photo.trim())
+      .filter(Boolean);
+  }
+
+  if (Array.isArray(item.photoIds)) {
+    normalized.photoIds = [...new Set(
+      item.photoIds
+        .map((photoId) => String(photoId || '').trim())
+        .filter(Boolean)
+    )];
+  }
+
   if (typeof item.photoHash === 'string' && item.photoHash.trim()) {
     normalized.photoHash = item.photoHash.trim().toLowerCase();
   }
