@@ -1229,6 +1229,8 @@ body {
   /* Bin detail print */
   #view-bin .bin-actions,
   #view-bin #bin-add-item,
+  #view-bin #bin-add-multi,
+  #view-bin .btn-row,
   #view-bin .sort-bar { display: none !important; }
 
   #view-bin .bin-header {
@@ -1273,6 +1275,8 @@ body {
   body.print-bin-contents-mode .image-modal-overlay,
   body.print-bin-contents-mode #view-bin .bin-actions,
   body.print-bin-contents-mode #view-bin #bin-add-item,
+  body.print-bin-contents-mode #view-bin #bin-add-multi,
+  body.print-bin-contents-mode #view-bin .btn-row,
   body.print-bin-contents-mode #view-bin .sort-bar,
   body.print-bin-contents-mode #view-bin .bin-header,
   body.print-bin-contents-mode #view-bin .item-photo,
@@ -1300,6 +1304,8 @@ body {
   body.print-bin-contents-mode #view-bin #bin-items-list.bin-items-grid {
     column-count: 2;
     column-gap: 24pt;
+    column-fill: auto;
+    height: 100vh;
     margin: 0;
     padding: 0;
   }
