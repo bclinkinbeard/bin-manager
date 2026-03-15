@@ -71,8 +71,18 @@ function blobToDataUrl(blob) {
 }
 
 async function dataUrlToBlob(dataUrl) {
-  const response = await fetch(dataUrl);
-  return response.blob();
+  const match = String(dataUrl || '').match(/^data:([^;]+);base64,(.*)$/i);
+  if (!match) throw new Error('Invalid data URL.');
+
+  const mimeType = match[1] || 'application/octet-stream';
+  const base64Data = (match[2] || '').replace(/\s+/g, '');
+  const raw = atob(base64Data);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) {
+    bytes[i] = raw.charCodeAt(i);
+  }
+
+  return new Blob([bytes], { type: mimeType });
 }
 
 function buildHeaders(syncKey, headers = {}) {
@@ -99,6 +109,20 @@ async function gzipToBase64(text) {
   await writer.close();
   const compressed = await new Response(stream.readable).arrayBuffer();
   return bytesToBase64(new Uint8Array(compressed));
+}
+
+function buildPlainSnapshotRequestBody(snapshotJson) {
+  return `{"snapshot":${snapshotJson}}`;
+}
+
+function shouldRetrySnapshotPushWithGzip(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    message.includes('snapshot too large') ||
+    message.includes('request entity too large') ||
+    message.includes('payload too large') ||
+    message.includes('(413)')
+  );
 }
 
 async function apiJson(path, options = {}, syncKey = '') {
@@ -131,6 +155,28 @@ async function apiJson(path, options = {}, syncKey = '') {
   }
 
   return data || {};
+}
+
+async function pushSnapshotWithFallback(snapshotJson, syncKey, onStatus = () => {}) {
+  try {
+    onStatus('Uploading snapshot...');
+    return await apiJson('/api/sync/push', {
+      method: 'POST',
+      body: buildPlainSnapshotRequestBody(snapshotJson),
+    }, syncKey);
+  } catch (error) {
+    if (!shouldRetrySnapshotPushWithGzip(error)) throw error;
+
+    onStatus('Compressing snapshot for upload...');
+    const snapshotGzipBase64 = await gzipToBase64(snapshotJson);
+    if (!snapshotGzipBase64) throw error;
+
+    onStatus('Uploading compressed snapshot...');
+    return apiJson('/api/sync/push', {
+      method: 'POST',
+      body: JSON.stringify({ snapshotGzipBase64 }),
+    }, syncKey);
+  }
 }
 
 function renderCloudMeta($, meta) {
@@ -465,15 +511,8 @@ function createCloudSyncManager(options) {
         }
       }
 
-      setCloudMessage($, 'Uploading snapshot...');
       const snapshotJson = JSON.stringify(payload.snapshot);
-      const snapshotGzipBase64 = await gzipToBase64(snapshotJson);
-      const result = await apiJson('/api/sync/push', {
-        method: 'POST',
-        body: JSON.stringify(snapshotGzipBase64
-          ? { snapshotGzipBase64 }
-          : { snapshot: payload.snapshot }),
-      }, syncKey);
+      const result = await pushSnapshotWithFallback(snapshotJson, syncKey, (message) => setCloudMessage($, message));
 
       setSyncMetaIso(localStorage, syncMetaKeys.lastCloudPushAt, new Date().toISOString());
       refreshSyncStatus();
@@ -631,4 +670,12 @@ function createCloudSyncManager(options) {
   };
 }
 
-export { buildSnapshotPayload, createCloudSyncManager, estimateDataUrlBytes, normalizeLegacyPhotosForCloud };
+export {
+  buildPlainSnapshotRequestBody,
+  buildSnapshotPayload,
+  createCloudSyncManager,
+  dataUrlToBlob,
+  estimateDataUrlBytes,
+  normalizeLegacyPhotosForCloud,
+  shouldRetrySnapshotPushWithGzip,
+};
