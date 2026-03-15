@@ -1,3 +1,5 @@
+import { mergeTags, normalizeTagList, removeTags } from './lib/tags.js';
+
 const DB_NAME = 'binManagerDB';
 const DB_VERSION = 3;
 
@@ -85,21 +87,10 @@ function hasPhotosStore() {
   return db.objectStoreNames.contains('photos');
 }
 
-function normalizeTags(tags) {
-  if (!Array.isArray(tags)) return [];
-  return [
-    ...new Set(
-      tags
-        .map((tag) => String(tag || '').trim().toLowerCase())
-        .filter(Boolean)
-    ),
-  ];
-}
-
 function normalizeItemForStorage(item) {
   return {
     ...item,
-    tags: normalizeTags(item.tags),
+    tags: normalizeTagList(item.tags),
   };
 }
 
@@ -398,6 +389,50 @@ async function putItem(item) {
   return result;
 }
 
+async function updateItemTags(itemIds, options = {}) {
+  await open();
+  const normalizedIds = [...new Set(
+    (Array.isArray(itemIds) ? itemIds : [])
+      .map((itemId) => String(itemId || '').trim())
+      .filter(Boolean)
+  )];
+  const tagsToAdd = normalizeTagList(options.add);
+  const tagsToRemove = normalizeTagList(options.remove);
+
+  if (!normalizedIds.length || (!tagsToAdd.length && !tagsToRemove.length)) {
+    return 0;
+  }
+
+  const existingItems = await Promise.all(
+    normalizedIds.map((itemId) => req(tx('items', 'readonly').get(itemId)))
+  );
+  const updatedItems = existingItems
+    .filter(Boolean)
+    .map((item) => {
+      const nextTags = removeTags(mergeTags(item.tags, tagsToAdd), tagsToRemove);
+      const currentTags = normalizeTagList(item.tags);
+      if (nextTags.length === currentTags.length && nextTags.every((tag, index) => tag === currentTags[index])) {
+        return null;
+      }
+      return {
+        ...item,
+        tags: nextTags,
+      };
+    })
+    .filter(Boolean);
+
+  if (!updatedItems.length) return 0;
+
+  const t = db.transaction('items', 'readwrite');
+  const store = t.objectStore('items');
+  for (const item of updatedItems) {
+    store.put(normalizeItemForStorage(item));
+  }
+  await txComplete(t);
+  bumpDataVersion();
+  return updatedItems.length;
+}
+
 async function deleteItem(id) {
   await open();
   const item = await req(tx('items', 'readonly').get(id));
@@ -631,6 +666,7 @@ export {
   getItemsByBin,
   getItemsByTag,
   putItem,
+  updateItemTags,
   deleteItem,
   getCounts,
   getNextBinNumber,
