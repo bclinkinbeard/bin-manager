@@ -59,6 +59,13 @@
     <!-- Bin detail view -->
     <div id="view-bin" class="view">
       <button class="btn-back" id="bin-back">&larr; Back</button>
+      <div class="print-bin-summary" id="print-bin-summary" aria-hidden="true">
+        <div class="print-bin-summary-meta">
+          <div class="print-bin-summary-id" id="print-bin-id"></div>
+          <div class="print-bin-summary-name" id="print-bin-name"></div>
+        </div>
+        <canvas class="print-bin-summary-qr" id="print-bin-qr" width="150" height="150" aria-label="QR code for bin"></canvas>
+      </div>
       <div class="bin-header">
         <div class="id-row">
           <span class="bin-id-large" id="bin-detail-id"></span>

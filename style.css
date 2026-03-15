@@ -1266,6 +1266,11 @@ body {
   }
 }
 
+
+.print-bin-summary {
+  display: none;
+}
+
 /* ── Print styles ── */
 
 @media print {
@@ -1362,12 +1367,43 @@ body {
     display: block !important;
   }
 
+  body.print-bin-contents-mode #view-bin .print-bin-summary {
+    display: flex !important;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16pt;
+    margin: 0 0 14pt;
+    padding: 0;
+    color: #000;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.print-bin-contents-mode #view-bin .print-bin-summary-id {
+    font-size: 20pt;
+    font-weight: 700;
+    line-height: 1.1;
+    margin: 0 0 6pt;
+  }
+
+  body.print-bin-contents-mode #view-bin .print-bin-summary-name {
+    font-size: 16pt;
+    font-weight: 500;
+    line-height: 1.15;
+    margin: 0;
+  }
+
+  body.print-bin-contents-mode #view-bin .print-bin-summary-qr {
+    width: 150px;
+    height: 150px;
+    flex: 0 0 auto;
+  }
+
   body.print-bin-contents-mode #view-bin #bin-items-list,
   body.print-bin-contents-mode #view-bin #bin-items-list.bin-items-grid {
     column-count: 2;
     column-gap: 24pt;
     column-fill: auto;
-    height: 100vh;
     margin: 0;
     padding: 0;
   }
@@ -1377,8 +1413,8 @@ body {
     width: 100%;
     border: 0;
     border-radius: 0;
-    margin: 0 0 4pt;
-    padding: 2pt 0;
+    margin: 0 0 6pt;
+    padding: 0;
     box-shadow: none;
     break-inside: avoid;
     page-break-inside: avoid;
@@ -1386,9 +1422,10 @@ body {
   }
 
   body.print-bin-contents-mode #view-bin .item-desc {
-    font-size: 14pt;
-    line-height: 1.05;
-    font-weight: 600;
+    display: block !important;
+    font-size: 18pt;
+    line-height: 1.15;
+    font-weight: 500;
     color: #000;
     margin: 0;
   }
