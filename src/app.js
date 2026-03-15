@@ -619,7 +619,12 @@ $('bin-add-item').addEventListener('click', () => {
 });
 
 $('bin-print-contents').addEventListener('click', () => {
+  document.body.classList.add('print-bin-contents-mode');
   window.print();
+});
+
+window.addEventListener('afterprint', () => {
+  document.body.classList.remove('print-bin-contents-mode');
 });
 
 // Sort controls

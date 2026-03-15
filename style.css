@@ -1264,4 +1264,64 @@ body {
     background: #ddd;
     color: #333;
   }
+
+  body.print-bin-contents-mode .header,
+  body.print-bin-contents-mode .bottom-nav,
+  body.print-bin-contents-mode .bins-controls,
+  body.print-bin-contents-mode .btn-back,
+  body.print-bin-contents-mode .modal-overlay,
+  body.print-bin-contents-mode .image-modal-overlay,
+  body.print-bin-contents-mode #view-bin .bin-actions,
+  body.print-bin-contents-mode #view-bin #bin-add-item,
+  body.print-bin-contents-mode #view-bin .sort-bar,
+  body.print-bin-contents-mode #view-bin .bin-header,
+  body.print-bin-contents-mode #view-bin .item-photo,
+  body.print-bin-contents-mode #view-bin .item-tags,
+  body.print-bin-contents-mode #view-bin .item-date,
+  body.print-bin-contents-mode #view-bin .item-actions,
+  body.print-bin-contents-mode #view-bin .archive-badge {
+    display: none !important;
+  }
+
+  body.print-bin-contents-mode .main {
+    padding: 0;
+    overflow: visible;
+  }
+
+  body.print-bin-contents-mode .view {
+    display: none !important;
+  }
+
+  body.print-bin-contents-mode #view-bin.view.active {
+    display: block !important;
+  }
+
+  body.print-bin-contents-mode #view-bin #bin-items-list,
+  body.print-bin-contents-mode #view-bin #bin-items-list.bin-items-grid {
+    display: block !important;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  body.print-bin-contents-mode #view-bin .item-card {
+    display: block;
+    border: 0;
+    border-bottom: 1px solid #000;
+    border-radius: 0;
+    margin: 0;
+    padding: 12pt 0;
+    box-shadow: none;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    background: #fff;
+  }
+
+  body.print-bin-contents-mode #view-bin .item-desc {
+    font-size: 18pt;
+    line-height: 1.35;
+    font-weight: 600;
+    color: #000;
+    margin: 0;
+  }
 }
