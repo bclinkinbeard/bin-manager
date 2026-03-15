@@ -20,8 +20,8 @@ import {
   getLatestLocalSyncMs,
 } from './lib/sync-meta.js';
 
-const APP_VERSION = '2026.03.15-v41';
-const APP_CACHE_VERSION = 'binmanager-v41';
+const APP_VERSION = '2026.03.15-v42';
+const APP_CACHE_VERSION = 'binmanager-v42';
 
 // ── DOM refs ──
 
@@ -623,8 +623,33 @@ $('bin-add-item').addEventListener('click', () => {
   openAddItemForm(currentBinId);
 });
 
+function renderPrintBinSummary() {
+  const idEl = $('print-bin-id');
+  const nameEl = $('print-bin-name');
+  const qrCanvas = $('print-bin-qr');
+  if (!idEl || !nameEl || !qrCanvas || !currentBinId) return;
+
+  idEl.textContent = currentBinId;
+  const displayName = $('bin-detail-name').textContent?.trim();
+  nameEl.textContent = displayName || 'Unnamed Bin';
+
+  const ctx = qrCanvas.getContext('2d');
+  ctx.clearRect(0, 0, qrCanvas.width, qrCanvas.height);
+
+  if (!window.QRCode || typeof window.QRCode.toCanvas !== 'function') return;
+
+  window.QRCode.toCanvas(qrCanvas, currentBinId, {
+    width: 150,
+    margin: 1,
+    errorCorrectionLevel: 'M',
+  }).catch((e) => {
+    console.error('Bin print QR generation failed', e);
+  });
+}
+
 $('bin-print-contents').addEventListener('click', () => {
   document.body.classList.add('print-bin-contents-mode');
+  renderPrintBinSummary();
   renderBinItems();
   requestAnimationFrame(() => window.print());
 });
