@@ -2,10 +2,12 @@ import crypto from 'node:crypto';
 import { unauthorized } from './json.js';
 
 const HEADER_NAME = 'x-sync-key';
+const DEMO_SYNC_KEY = 'demo';
 
 function normalizeSyncKey(value) {
   const key = String(value || '').trim();
   if (!key) return '';
+  if (key === DEMO_SYNC_KEY) return key;
   if (key.length < 8) return '';
   if (key.length > 256) return '';
   return key;

@@ -1,4 +1,5 @@
 const SYNC_KEY_STORAGE = 'bmCloudSyncKey';
+const DEMO_SYNC_KEY = 'demo';
 
 function isPhotoDataUrl(value) {
   return typeof value === 'string' && value.startsWith('data:image/');
@@ -11,8 +12,23 @@ function parseDataUrlMimeType(dataUrl) {
 
 function normalizeSyncKey(value) {
   const key = String(value || '').trim();
+  if (key === DEMO_SYNC_KEY) return key;
   if (key.length < 8 || key.length > 256) return '';
   return key;
+}
+
+async function fetchDefaultSyncKey() {
+  try {
+    const response = await fetch('/api/sync/client-config', {
+      method: 'GET',
+      credentials: 'same-origin',
+    });
+    if (!response.ok) return DEMO_SYNC_KEY;
+    const data = await response.json();
+    return normalizeSyncKey(data && data.clientKeyDefault) || DEMO_SYNC_KEY;
+  } catch {
+    return DEMO_SYNC_KEY;
+  }
 }
 
 function syncKeyHint(syncKey) {
@@ -191,6 +207,7 @@ function createCloudSyncManager(options) {
   let syncKey = '';
   let cloudMeta = null;
   let busy = false;
+  let autoSyncDone = false;
 
   function updateUiState() {
     const statusEl = $('cloud-auth-status');
@@ -214,9 +231,17 @@ function createCloudSyncManager(options) {
     if (pullBtn) pullBtn.disabled = busy || !connected;
   }
 
-  function loadStoredKey() {
-    syncKey = normalizeSyncKey(localStorage.getItem(SYNC_KEY_STORAGE) || '');
-    if (!syncKey) localStorage.removeItem(SYNC_KEY_STORAGE);
+  async function loadStoredKey() {
+    const stored = normalizeSyncKey(localStorage.getItem(SYNC_KEY_STORAGE) || '');
+    if (stored) {
+      syncKey = stored;
+      return;
+    }
+
+    localStorage.removeItem(SYNC_KEY_STORAGE);
+    const defaultKey = await fetchDefaultSyncKey();
+    syncKey = normalizeSyncKey(defaultKey) || DEMO_SYNC_KEY;
+    localStorage.setItem(SYNC_KEY_STORAGE, syncKey);
   }
 
   function saveKey(value) {
@@ -342,18 +367,21 @@ function createCloudSyncManager(options) {
     }
   }
 
-  async function pullFromCloud() {
+  async function pullFromCloud(options = {}) {
+    const { skipConfirm = false } = options;
     if (!syncKey) {
       showToast('Enter a sync key before pulling', 'error');
       return;
     }
 
-    const confirmed = await confirmAction({
-      title: 'Pull From Cloud',
-      message: 'Replace all local data with your cloud snapshot?',
-      confirmLabel: 'Pull',
-    });
-    if (!confirmed) return;
+    if (!skipConfirm) {
+      const confirmed = await confirmAction({
+        title: 'Pull From Cloud',
+        message: 'Replace all local data with your cloud snapshot?',
+        confirmLabel: 'Pull',
+      });
+      if (!confirmed) return;
+    }
 
     busy = true;
     updateUiState();
@@ -425,7 +453,7 @@ function createCloudSyncManager(options) {
   }
 
   async function refresh() {
-    loadStoredKey();
+    await loadStoredKey();
     updateUiState();
     updateLocalCloudLabels($, localStorage, syncMetaKeys, formatDateTime, getSyncMetaIso);
 
@@ -436,6 +464,10 @@ function createCloudSyncManager(options) {
 
     try {
       await refreshCloudMeta();
+      if (syncKey === DEMO_SYNC_KEY && !autoSyncDone) {
+        autoSyncDone = true;
+        await pullFromCloud({ skipConfirm: true });
+      }
     } catch (error) {
       setCloudMessage($, error.message || 'Cloud sync unavailable.', true);
     }
