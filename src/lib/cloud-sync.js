@@ -142,21 +142,27 @@ async function buildSnapshotPayload(exportData) {
   for (const item of exportData.items || []) {
     const next = { ...item };
     const currentHash = typeof next.photoHash === 'string' ? next.photoHash.trim().toLowerCase() : '';
+    const inlinePhotos = [...new Set([
+      ...(isPhotoDataUrl(next.photo) ? [next.photo] : []),
+      ...(Array.isArray(next.photos) ? next.photos.filter((photo) => isPhotoDataUrl(photo)) : []),
+    ])];
+    const primaryPhoto = inlinePhotos[0] || null;
 
-    if (isPhotoDataUrl(next.photo)) {
-      const hash = await sha256HexFromDataUrl(next.photo);
+    if (isPhotoDataUrl(primaryPhoto)) {
+      const hash = await sha256HexFromDataUrl(primaryPhoto);
       photosByHash.set(hash, {
         hash,
-        dataUrl: next.photo,
-        mimeType: parseDataUrlMimeType(next.photo),
+        dataUrl: primaryPhoto,
+        mimeType: parseDataUrlMimeType(primaryPhoto),
       });
       next.photoHash = hash;
-      next.photoMimeType = parseDataUrlMimeType(next.photo);
+      next.photoMimeType = parseDataUrlMimeType(primaryPhoto);
     } else if (currentHash) {
       next.photoHash = currentHash;
     }
 
     delete next.photo;
+    delete next.photos;
     items.push(next);
   }
 
@@ -499,4 +505,4 @@ function createCloudSyncManager(options) {
   };
 }
 
-export { createCloudSyncManager };
+export { buildSnapshotPayload, createCloudSyncManager };

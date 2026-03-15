@@ -107,6 +107,24 @@ function isDataUrlPhoto(value) {
   return typeof value === 'string' && value.startsWith('data:image/');
 }
 
+function getInlinePhotos(item) {
+  if (!item) return [];
+  const photos = [];
+  if (isDataUrlPhoto(item.photo)) photos.push(item.photo);
+  if (Array.isArray(item.photos)) {
+    photos.push(...item.photos.filter((photo) => isDataUrlPhoto(photo)));
+  }
+  return [...new Set(photos)];
+}
+
+function getPhotoIds(item) {
+  if (!item) return [];
+  return [...new Set([
+    ...(typeof item.photoId === 'string' ? [item.photoId.trim()] : []),
+    ...(Array.isArray(item.photoIds) ? item.photoIds.map((id) => String(id || '').trim()) : []),
+  ].filter(Boolean))];
+}
+
 async function dataUrlToBlob(dataUrl) {
   const response = await fetch(dataUrl);
   return response.blob();
@@ -159,17 +177,8 @@ async function deletePhotoIfUnused(photoId) {
 
 async function hydrateItemPhoto(item) {
   if (!item) return item;
-  const photoIdList = [
-    ...(item.photoId ? [item.photoId] : []),
-    ...(Array.isArray(item.photoIds) ? item.photoIds : []),
-  ].filter(Boolean);
-
-  const inlinePhotos = [];
-  if (isDataUrlPhoto(item.photo)) inlinePhotos.push(item.photo);
-  if (Array.isArray(item.photos)) {
-    inlinePhotos.push(...item.photos.filter((photo) => isDataUrlPhoto(photo)));
-  }
-  const dedupedInline = [...new Set(inlinePhotos)];
+  const photoIdList = getPhotoIds(item);
+  const dedupedInline = getInlinePhotos(item);
 
   if (photoIdList.length === 0) {
     if (dedupedInline.length === 0) return item;
@@ -203,14 +212,8 @@ async function hydrateItemsWithPhotos(items) {
 
 async function ensureBlobBackedPhoto(item) {
   const normalized = normalizeItemForStorage(item);
-  const inlinePhotos = [
-    ...(isDataUrlPhoto(normalized.photo) ? [normalized.photo] : []),
-    ...(Array.isArray(normalized.photos) ? normalized.photos.filter((photo) => isDataUrlPhoto(photo)) : []),
-  ];
-  const existingIds = [
-    ...(typeof normalized.photoId === 'string' ? [normalized.photoId.trim()] : []),
-    ...(Array.isArray(normalized.photoIds) ? normalized.photoIds.map((id) => String(id || '').trim()) : []),
-  ].filter(Boolean);
+  const inlinePhotos = getInlinePhotos(normalized);
+  const existingIds = getPhotoIds(normalized);
 
   if (!hasPhotosStore()) {
     const firstInline = inlinePhotos[0] || null;
@@ -224,25 +227,31 @@ async function ensureBlobBackedPhoto(item) {
   }
 
   const uploadedIds = [];
+  const fallbackInlinePhotos = [];
   for (const photo of inlinePhotos) {
     try {
       const blob = await dataUrlToBlob(photo);
       const photoId = await putPhotoBlob(blob, blob.type);
-      if (photoId) uploadedIds.push(photoId);
+      if (photoId) {
+        uploadedIds.push(photoId);
+      } else {
+        fallbackInlinePhotos.push(photo);
+      }
     } catch {
-      // Keep going for other photos.
+      fallbackInlinePhotos.push(photo);
     }
   }
 
   const photoIds = [...new Set([...existingIds, ...uploadedIds])];
   const firstPhotoId = photoIds[0] || null;
+  const firstInline = fallbackInlinePhotos[0] || null;
 
   return {
     ...normalized,
-    photo: undefined,
-    photos: undefined,
+    photo: firstInline,
+    photos: fallbackInlinePhotos.length > 0 ? fallbackInlinePhotos : undefined,
     photoId: firstPhotoId,
-    photoIds,
+    photoIds: photoIds.length > 0 ? photoIds : undefined,
   };
 }
 
@@ -467,9 +476,9 @@ async function exportAll() {
 
   for (const item of items) {
     const exportItem = { ...item };
-    const photoIds = [...new Set([exportItem.photoId, ...(Array.isArray(exportItem.photoIds) ? exportItem.photoIds : [])].filter(Boolean))];
+    const photos = getInlinePhotos(exportItem);
+    const photoIds = getPhotoIds(exportItem);
     if (photoIds.length > 0) {
-      const photos = [];
       for (const photoId of photoIds) {
         const photoRecord = await getPhotoRecord(photoId);
         if (!photoRecord || !photoRecord.blob) continue;
@@ -479,10 +488,14 @@ async function exportAll() {
           // Ignore conversion errors and export without this photo.
         }
       }
-      if (photos.length > 0) {
-        exportItem.photo = photos[0];
-        exportItem.photos = photos;
-      }
+    }
+    const dedupedPhotos = [...new Set(photos)];
+    if (dedupedPhotos.length > 0) {
+      exportItem.photo = dedupedPhotos[0];
+      exportItem.photos = dedupedPhotos;
+    } else {
+      delete exportItem.photo;
+      delete exportItem.photos;
     }
     delete exportItem.photoId;
     delete exportItem.photoIds;
@@ -501,19 +514,14 @@ async function importAll(data, mode) {
   const preparedItems = [];
   for (const item of data.items || []) {
     const normalized = normalizeItemForStorage(item);
-    const incomingPhotos = [
-      ...(isDataUrlPhoto(normalized.photo) ? [normalized.photo] : []),
-      ...(Array.isArray(normalized.photos) ? normalized.photos.filter((photo) => isDataUrlPhoto(photo)) : []),
-    ];
+    const incomingPhotos = getInlinePhotos(normalized);
     if ((!incomingPhotos.length && !normalized.photoId && !Array.isArray(normalized.photoIds)) || !hasPhotosStore()) {
       preparedItems.push(normalized);
       continue;
     }
 
-    const mergedPhotoIds = [
-      ...(normalized.photoId ? [normalized.photoId] : []),
-      ...(Array.isArray(normalized.photoIds) ? normalized.photoIds : []),
-    ].filter(Boolean);
+    const mergedPhotoIds = getPhotoIds(normalized);
+    const fallbackInlinePhotos = [];
 
     for (const photo of incomingPhotos) {
       try {
@@ -527,17 +535,17 @@ async function importAll(data, mode) {
         });
         mergedPhotoIds.push(photoId);
       } catch {
-        // Ignore a single photo conversion failure.
+        fallbackInlinePhotos.push(photo);
       }
     }
 
     const uniquePhotoIds = [...new Set(mergedPhotoIds)];
     preparedItems.push({
       ...normalized,
-      photo: undefined,
-      photos: undefined,
-      photoId: uniquePhotoIds[0],
-      photoIds: uniquePhotoIds,
+      photo: fallbackInlinePhotos[0] || null,
+      photos: fallbackInlinePhotos.length > 0 ? fallbackInlinePhotos : undefined,
+      photoId: uniquePhotoIds[0] || null,
+      photoIds: uniquePhotoIds.length > 0 ? uniquePhotoIds : undefined,
     });
   }
 
