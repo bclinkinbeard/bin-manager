@@ -20,8 +20,8 @@ import {
   getLatestLocalSyncMs,
 } from './lib/sync-meta.js';
 
-const APP_VERSION = '2026.03.15-v42';
-const APP_CACHE_VERSION = 'binmanager-v42';
+const APP_VERSION = '2026.03.15-v45';
+const APP_CACHE_VERSION = 'binmanager-v45';
 
 // ── DOM refs ──
 
@@ -52,6 +52,8 @@ let scanHandled = false;
 let itemSortOrder = localStorage.getItem('itemSortOrder') || 'newest';
 let binDisplayMode = localStorage.getItem('binDisplayMode') || 'default';
 let currentBinItems = [];
+let isBulkTagMode = false;
+let selectedBinItemIds = new Set();
 let currentTagOriginBinId = null;
 let pendingImportData = null;
 let pendingImportExportedAt = null;
@@ -83,6 +85,101 @@ function renderAppVersion() {
   const dataEl = $('app-version-data');
   if (headerEl) headerEl.textContent = label;
   if (dataEl) dataEl.textContent = label;
+}
+
+function pruneSelectedBinItems() {
+  const validIds = new Set(currentBinItems.map((item) => item.id));
+  selectedBinItemIds = new Set(
+    [...selectedBinItemIds].filter((itemId) => validIds.has(itemId))
+  );
+}
+
+function updateBulkTagUi() {
+  const toggle = $('bin-batch-tags-toggle');
+  const panel = $('bin-bulk-tags-panel');
+  const count = $('bin-bulk-selection-count');
+  const selectAllBtn = $('bin-bulk-select-all');
+  const clearBtn = $('bin-bulk-clear');
+  const addBtn = $('bin-bulk-apply');
+  const removeBtn = $('bin-bulk-remove');
+  const input = $('bin-bulk-tags-input');
+  if (!toggle || !panel || !count || !selectAllBtn || !clearBtn || !addBtn || !removeBtn || !input) return;
+
+  pruneSelectedBinItems();
+  const total = currentBinItems.length;
+  const selected = selectedBinItemIds.size;
+  const hasParsedTags = parseTags(input.value.trim()).length > 0;
+
+  toggle.textContent = isBulkTagMode ? 'Cancel Tagging' : 'Batch Tag';
+  toggle.className = isBulkTagMode ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+  panel.hidden = !isBulkTagMode;
+  count.textContent = `${selected} of ${total} selected`;
+  selectAllBtn.disabled = total === 0 || selected === total;
+  clearBtn.disabled = selected === 0;
+  addBtn.disabled = selected === 0 || !hasParsedTags;
+  removeBtn.disabled = selected === 0 || !hasParsedTags;
+}
+
+function resetBulkTagState() {
+  isBulkTagMode = false;
+  selectedBinItemIds = new Set();
+  const input = $('bin-bulk-tags-input');
+  if (input) input.value = '';
+  updateBulkTagUi();
+}
+
+function toggleBulkTagSelection(itemId) {
+  if (!itemId) return;
+  if (selectedBinItemIds.has(itemId)) {
+    selectedBinItemIds.delete(itemId);
+  } else {
+    selectedBinItemIds.add(itemId);
+  }
+  renderBinItems();
+}
+
+async function refreshCurrentBinItems() {
+  if (!currentBinId) return;
+  currentBinItems = await db.getItemsByBin(currentBinId);
+  pruneSelectedBinItems();
+  renderBinItems();
+}
+
+async function applyBulkTags(mode) {
+  const itemIds = [...selectedBinItemIds];
+  const tags = parseTags($('bin-bulk-tags-input').value.trim());
+  if (!itemIds.length) {
+    showToast('Select at least one item', 'error');
+    return;
+  }
+  if (!tags.length) {
+    showToast('Enter at least one tag', 'error');
+    return;
+  }
+
+  const updatedCount = await db.updateItemTags(
+    itemIds,
+    mode === 'remove' ? { remove: tags } : { add: tags }
+  );
+
+  await refreshCurrentBinItems();
+  await refreshStats();
+
+  if (updatedCount === 0) {
+    showToast(
+      mode === 'remove'
+        ? 'Selected items did not have those tags'
+        : 'Selected items already had those tags'
+    );
+    return;
+  }
+
+  $('bin-bulk-tags-input').value = '';
+  updateBulkTagUi();
+  showToast(
+    `${mode === 'remove' ? 'Removed' : 'Added'} ${tags.length} tag${tags.length === 1 ? '' : 's'} on ${updatedCount} item${updatedCount === 1 ? '' : 's'}`,
+    'success'
+  );
 }
 
 // ── Navigation ──
@@ -409,6 +506,7 @@ async function onQrScanned(text) {
 async function openBin(id, options = {}) {
   const { syncUrl = true } = options;
   currentBinId = id;
+  resetBulkTagState();
   const bin = await db.getBin(id);
   if (!bin) {
     openBinForm(id, null, { syncUrl });
@@ -430,6 +528,7 @@ async function openBin(id, options = {}) {
   currentBinItems = items;
   $('display-mode').value = binDisplayMode;
   renderBinItems();
+  updateBulkTagUi();
   showView('bin', { syncUrl });
 }
 
@@ -437,11 +536,15 @@ function renderBinItems() {
   const container = $('bin-items-list');
   const isPrintBinContentsMode = document.body.classList.contains('print-bin-contents-mode');
   const sorted = sortItems(currentBinItems, isPrintBinContentsMode ? 'az' : itemSortOrder);
-  const activeDisplayMode = isPrintBinContentsMode ? 'default' : binDisplayMode;
+  const isSelectableMode = isBulkTagMode && !isPrintBinContentsMode;
+  const activeDisplayMode = isPrintBinContentsMode
+    ? 'default'
+    : (isSelectableMode && binDisplayMode === 'grid' ? 'default' : binDisplayMode);
   container.className = 'bin-items-' + activeDisplayMode;
 
   if (sorted.length === 0) {
     container.innerHTML = '<div class="empty-state">No items in this bin yet.</div>';
+    updateBulkTagUi();
     return;
   }
 
@@ -457,21 +560,43 @@ function renderBinItems() {
   } else {
     const photoClass = activeDisplayMode === 'large' ? 'item-photo item-photo-lg item-photo-preview' : 'item-photo item-photo-preview';
     container.innerHTML = sorted
-      .map(
-        (item) => `
-      <div class="item-card" data-item-id="${esc(item.id)}">
-        ${item.photo && item.photo.startsWith('data:image/') ? `<img class="${photoClass}" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}" role="button" tabindex="0" title="Tap to enlarge">` : ''}
+      .map((item) => {
+        const isSelected = selectedBinItemIds.has(item.id);
+        const tagsMarkup = (item.tags && item.tags.length)
+          ? `<div class="item-tags">${item.tags.map((t) => isSelectableMode
+            ? `<span class="tag-chip">${esc(t)}</span>`
+            : `<button type="button" class="tag-chip tag-chip-btn" data-tag="${escAttr(t)}">${esc(t)}</button>`).join('')}</div>`
+          : '';
+        return `
+      <div class="item-card${isSelectableMode ? ' item-card-selectable' : ''}${isSelected ? ' item-card-selected' : ''}" data-item-id="${esc(item.id)}"${isSelectableMode ? ` data-bulk-toggle-item-id="${escAttr(item.id)}" tabindex="0" role="button" aria-pressed="${isSelected ? 'true' : 'false'}"` : ''}>
+        ${isSelectableMode ? `<div class="item-select-marker" aria-hidden="true">${isSelected ? '&#10003;' : ''}</div>` : ''}
+        ${item.photo && item.photo.startsWith('data:image/') ? `<img class="${photoClass}" src="${escAttr(item.photo)}" alt="Photo of ${esc(item.description)}"${isSelectableMode ? '' : ' role="button" tabindex="0" title="Tap to enlarge"'}>` : ''}
         <div class="item-info">
           <div class="item-desc">${esc(item.description)}</div>
-          ${(item.tags && item.tags.length) ? `<div class="item-tags">${item.tags.map(t => `<button type="button" class="tag-chip tag-chip-btn" data-tag="${escAttr(t)}">${esc(t)}</button>`).join('')}</div>` : ''}
+          ${tagsMarkup}
           <div class="item-date">${formatDate(item.addedAt)}</div>
         </div>
-        <div class="item-actions">
+        ${isSelectableMode ? '' : `<div class="item-actions">
           <button class="item-edit" data-item-id="${esc(item.id)}" title="Edit" aria-label="Edit ${esc(item.description)}">&#9998;</button>
           <button class="item-delete" data-item-id="${esc(item.id)}" title="Delete" aria-label="Delete ${esc(item.description)}">&times;</button>
-        </div>
-      </div>`)
+        </div>`}
+      </div>`;
+      })
       .join('');
+  }
+
+  if (isSelectableMode) {
+    container.querySelectorAll('[data-bulk-toggle-item-id]').forEach((el) => {
+      const toggle = () => toggleBulkTagSelection(el.dataset.bulkToggleItemId);
+      el.addEventListener('click', toggle);
+      el.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        toggle();
+      });
+    });
+    updateBulkTagUi();
+    return;
   }
 
   container.querySelectorAll('.item-delete').forEach((btn) => {
@@ -517,6 +642,8 @@ function renderBinItems() {
       openTagResults(btn.dataset.tag, currentBinId);
     });
   });
+
+  updateBulkTagUi();
 }
 
 async function openTagResults(tag, originBinId, options = {}) {
@@ -622,6 +749,50 @@ $('bin-edit').addEventListener('click', async () => {
 
 $('bin-add-item').addEventListener('click', () => {
   openAddItemForm(currentBinId);
+});
+
+$('bin-batch-tags-toggle').addEventListener('click', () => {
+  if (isBulkTagMode) {
+    resetBulkTagState();
+    renderBinItems();
+    return;
+  }
+  if (currentBinItems.length === 0) return;
+  isBulkTagMode = true;
+  renderBinItems();
+});
+
+$('bin-bulk-select-all').addEventListener('click', () => {
+  selectedBinItemIds = new Set(currentBinItems.map((item) => item.id));
+  renderBinItems();
+});
+
+$('bin-bulk-clear').addEventListener('click', () => {
+  selectedBinItemIds = new Set();
+  renderBinItems();
+});
+
+$('bin-bulk-cancel').addEventListener('click', () => {
+  resetBulkTagState();
+  renderBinItems();
+});
+
+$('bin-bulk-tags-input').addEventListener('input', () => {
+  updateBulkTagUi();
+});
+
+$('bin-bulk-tags-input').addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  await applyBulkTags('add');
+});
+
+$('bin-bulk-apply').addEventListener('click', async () => {
+  await applyBulkTags('add');
+});
+
+$('bin-bulk-remove').addEventListener('click', async () => {
+  await applyBulkTags('remove');
 });
 
 function renderPrintBinSummary() {
@@ -1100,6 +1271,7 @@ function setupTagAutocomplete(input) {
 
 setupTagAutocomplete($('item-form-tags'));
 setupTagAutocomplete($('multi-crop-shared-tags'));
+setupTagAutocomplete($('bin-bulk-tags-input'));
 
 const _origRenderMultiCropItems = renderMultiCropItems;
 renderMultiCropItems = function () {
@@ -1655,6 +1827,7 @@ document.addEventListener('keydown', (e) => {
 async function init() {
   try {
     renderAppVersion();
+    updateBulkTagUi();
     await db.open();
     await cloudSyncManager.init();
     // Restore sort preference

@@ -1,11 +1,27 @@
-function parseTags(rawValue) {
-  if (!rawValue) return [];
+function normalizeTagList(tags) {
+  if (!Array.isArray(tags)) return [];
   return [...new Set(
-    String(rawValue)
-      .split(',')
-      .map((tag) => tag.trim().toLowerCase())
+    tags
+      .map((tag) => String(tag || '').trim().toLowerCase())
       .filter(Boolean)
   )];
 }
 
-export { parseTags };
+function parseTags(rawValue) {
+  if (!rawValue) return [];
+  return normalizeTagList(String(rawValue).split(','));
+}
+
+function mergeTags(existingTags, tagsToAdd) {
+  return normalizeTagList([
+    ...normalizeTagList(existingTags),
+    ...normalizeTagList(tagsToAdd),
+  ]);
+}
+
+function removeTags(existingTags, tagsToRemove) {
+  const removed = new Set(normalizeTagList(tagsToRemove));
+  return normalizeTagList(existingTags).filter((tag) => !removed.has(tag));
+}
+
+export { normalizeTagList, parseTags, mergeTags, removeTags };
