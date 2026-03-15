@@ -1,4 +1,4 @@
-function createSearchView({ db, views, $, esc, refreshStats, syncRouteReplace, onOpenBin, getIsApplyingRoute }) {
+function createSearchView({ db, views, $, esc, refreshStats, syncRouteReplace, onOpenItem, getIsApplyingRoute }) {
   let fuse = null;
   let fuseDataVersion = -1;
   let searchEntries = null;
@@ -125,7 +125,7 @@ function createSearchView({ db, views, $, esc, refreshStats, syncRouteReplace, o
       const hasPhoto = typeof r.photo === 'string' && r.photo.startsWith('data:image/');
       const labelHtml = isQueryActive ? highlightByRanges(label, labelRanges) : esc(label);
       return `
-      <li class="item-card search-item-card${r.archived ? ' archived' : ''}" data-open-bin-id="${esc(r.binId)}" tabindex="0" role="button">
+      <li class="item-card search-item-card${r.archived ? ' archived' : ''}" data-open-item-id="${esc(r.id)}" tabindex="0" role="button">
         ${hasPhoto ? `<img class="item-photo" src="${esc(r.photo)}" alt="Photo of ${esc(label)}">` : ''}
         <div class="item-info">
           <div class="item-desc">${labelHtml}</div>
@@ -135,8 +135,8 @@ function createSearchView({ db, views, $, esc, refreshStats, syncRouteReplace, o
       </li>`;
     }).join('');
 
-    list.querySelectorAll('[data-open-bin-id]').forEach((card) => {
-      const handler = () => onOpenBin(card.dataset.openBinId);
+    list.querySelectorAll('[data-open-item-id]').forEach((card) => {
+      const handler = () => onOpenItem(card.dataset.openItemId);
       card.addEventListener('click', handler);
       card.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {

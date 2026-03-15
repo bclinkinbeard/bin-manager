@@ -107,6 +107,24 @@ function isDataUrlPhoto(value) {
   return typeof value === 'string' && value.startsWith('data:image/');
 }
 
+function getInlinePhotos(item) {
+  if (!item) return [];
+  const photos = [];
+  if (isDataUrlPhoto(item.photo)) photos.push(item.photo);
+  if (Array.isArray(item.photos)) {
+    photos.push(...item.photos.filter((photo) => isDataUrlPhoto(photo)));
+  }
+  return [...new Set(photos)];
+}
+
+function getPhotoIds(item) {
+  if (!item) return [];
+  return [...new Set([
+    ...(typeof item.photoId === 'string' ? [item.photoId.trim()] : []),
+    ...(Array.isArray(item.photoIds) ? item.photoIds.map((id) => String(id || '').trim()) : []),
+  ].filter(Boolean))];
+}
+
 async function dataUrlToBlob(dataUrl) {
   const response = await fetch(dataUrl);
   return response.blob();
@@ -145,7 +163,7 @@ async function countItemsByPhotoId(photoId) {
   await open();
   if (!photoId) return 0;
   const items = await getAllItems();
-  return items.filter((item) => item.photoId === photoId).length;
+  return items.filter((item) => item.photoId === photoId || (Array.isArray(item.photoIds) && item.photoIds.includes(photoId))).length;
 }
 
 async function deletePhotoIfUnused(photoId) {
@@ -159,20 +177,33 @@ async function deletePhotoIfUnused(photoId) {
 
 async function hydrateItemPhoto(item) {
   if (!item) return item;
-  if (isDataUrlPhoto(item.photo)) return item;
-  if (!item.photoId) return item;
+  const photoIdList = getPhotoIds(item);
+  const dedupedInline = getInlinePhotos(item);
+
+  if (photoIdList.length === 0) {
+    if (dedupedInline.length === 0) return item;
+    return { ...item, photo: dedupedInline[0], photos: dedupedInline };
+  }
+
   const cachedItem = readCache.itemById.get(item.id);
-  if (cachedItem && isDataUrlPhoto(cachedItem.photo)) {
-    return { ...item, photo: cachedItem.photo };
+  if (cachedItem && Array.isArray(cachedItem.photos) && cachedItem.photos.length >= photoIdList.length) {
+    return { ...item, photo: cachedItem.photos[0], photos: cachedItem.photos };
   }
-  const photoRecord = await getPhotoRecord(item.photoId);
-  if (!photoRecord || !photoRecord.blob) return item;
-  try {
-    const dataUrl = await blobToDataUrl(photoRecord.blob);
-    return { ...item, photo: dataUrl };
-  } catch {
-    return item;
+
+  const hydratedPhotos = [...dedupedInline];
+  for (const photoId of photoIdList) {
+    const photoRecord = await getPhotoRecord(photoId);
+    if (!photoRecord || !photoRecord.blob) continue;
+    try {
+      const dataUrl = await blobToDataUrl(photoRecord.blob);
+      hydratedPhotos.push(dataUrl);
+    } catch {
+      // Ignore conversion failures.
+    }
   }
+  const photos = [...new Set(hydratedPhotos)];
+  if (photos.length === 0) return { ...item, photos: [] };
+  return { ...item, photo: photos[0], photos };
 }
 
 async function hydrateItemsWithPhotos(items) {
@@ -181,24 +212,47 @@ async function hydrateItemsWithPhotos(items) {
 
 async function ensureBlobBackedPhoto(item) {
   const normalized = normalizeItemForStorage(item);
+  const inlinePhotos = getInlinePhotos(normalized);
+  const existingIds = getPhotoIds(normalized);
 
-  if (normalized.photoId && typeof normalized.photoId === 'string') {
-    return { ...normalized, photoId: normalized.photoId.trim(), photo: undefined };
+  if (!hasPhotosStore()) {
+    const firstInline = inlinePhotos[0] || null;
+    return {
+      ...normalized,
+      photo: firstInline,
+      photos: inlinePhotos,
+      photoId: undefined,
+      photoIds: undefined,
+    };
   }
 
-  if (isDataUrlPhoto(normalized.photo) && hasPhotosStore()) {
+  const uploadedIds = [];
+  const fallbackInlinePhotos = [];
+  for (const photo of inlinePhotos) {
     try {
-      const blob = await dataUrlToBlob(normalized.photo);
+      const blob = await dataUrlToBlob(photo);
       const photoId = await putPhotoBlob(blob, blob.type);
       if (photoId) {
-        return { ...normalized, photoId, photo: undefined };
+        uploadedIds.push(photoId);
+      } else {
+        fallbackInlinePhotos.push(photo);
       }
     } catch {
-      // Fall through to legacy inline photo storage if conversion fails.
+      fallbackInlinePhotos.push(photo);
     }
   }
 
-  return normalized;
+  const photoIds = [...new Set([...existingIds, ...uploadedIds])];
+  const firstPhotoId = photoIds[0] || null;
+  const firstInline = fallbackInlinePhotos[0] || null;
+
+  return {
+    ...normalized,
+    photo: firstInline,
+    photos: fallbackInlinePhotos.length > 0 ? fallbackInlinePhotos : undefined,
+    photoId: firstPhotoId,
+    photoIds: photoIds.length > 0 ? photoIds : undefined,
+  };
 }
 
 // ── Bins ──
@@ -241,7 +295,7 @@ async function getItemsByBinRaw(binId) {
 async function deleteBin(id) {
   await open();
   const items = await getItemsByBinRaw(id);
-  const photoIds = [...new Set(items.map((item) => item.photoId).filter(Boolean))];
+  const photoIds = [...new Set(items.flatMap((item) => [item.photoId, ...(Array.isArray(item.photoIds) ? item.photoIds : [])]).filter(Boolean))];
 
   const t = db.transaction(['bins', 'items'], 'readwrite');
   t.objectStore('bins').delete(id);
@@ -333,8 +387,13 @@ async function getItemsByTag(tag) {
 
 async function putItem(item) {
   await open();
+  const existing = item && item.id ? await req(tx('items', 'readonly').get(item.id)) : null;
   const itemForStorage = await ensureBlobBackedPhoto(item);
   const result = await req(tx('items', 'readwrite').put(itemForStorage));
+  if (existing) {
+    const oldPhotoIds = [...new Set([existing.photoId, ...(Array.isArray(existing.photoIds) ? existing.photoIds : [])].filter(Boolean))];
+    await Promise.all(oldPhotoIds.map((photoId) => deletePhotoIfUnused(photoId)));
+  }
   bumpDataVersion();
   return result;
 }
@@ -343,8 +402,9 @@ async function deleteItem(id) {
   await open();
   const item = await req(tx('items', 'readonly').get(id));
   await req(tx('items', 'readwrite').delete(id));
-  if (item && item.photoId) {
-    await deletePhotoIfUnused(item.photoId);
+  if (item) {
+    const photoIds = [...new Set([item.photoId, ...(Array.isArray(item.photoIds) ? item.photoIds : [])].filter(Boolean))];
+    await Promise.all(photoIds.map((photoId) => deletePhotoIfUnused(photoId)));
   }
   bumpDataVersion();
 }
@@ -416,17 +476,29 @@ async function exportAll() {
 
   for (const item of items) {
     const exportItem = { ...item };
-    if (!isDataUrlPhoto(exportItem.photo) && exportItem.photoId) {
-      const photoRecord = await getPhotoRecord(exportItem.photoId);
-      if (photoRecord && photoRecord.blob) {
+    const photos = getInlinePhotos(exportItem);
+    const photoIds = getPhotoIds(exportItem);
+    if (photoIds.length > 0) {
+      for (const photoId of photoIds) {
+        const photoRecord = await getPhotoRecord(photoId);
+        if (!photoRecord || !photoRecord.blob) continue;
         try {
-          exportItem.photo = await blobToDataUrl(photoRecord.blob);
+          photos.push(await blobToDataUrl(photoRecord.blob));
         } catch {
-          // Ignore conversion errors and export without inline photo.
+          // Ignore conversion errors and export without this photo.
         }
       }
     }
+    const dedupedPhotos = [...new Set(photos)];
+    if (dedupedPhotos.length > 0) {
+      exportItem.photo = dedupedPhotos[0];
+      exportItem.photos = dedupedPhotos;
+    } else {
+      delete exportItem.photo;
+      delete exportItem.photos;
+    }
     delete exportItem.photoId;
+    delete exportItem.photoIds;
     exportItems.push(exportItem);
   }
 
@@ -442,24 +514,39 @@ async function importAll(data, mode) {
   const preparedItems = [];
   for (const item of data.items || []) {
     const normalized = normalizeItemForStorage(item);
-    if (normalized.photoId || !isDataUrlPhoto(normalized.photo) || !hasPhotosStore()) {
+    const incomingPhotos = getInlinePhotos(normalized);
+    if ((!incomingPhotos.length && !normalized.photoId && !Array.isArray(normalized.photoIds)) || !hasPhotosStore()) {
       preparedItems.push(normalized);
       continue;
     }
 
-    try {
-      const blob = await dataUrlToBlob(normalized.photo);
-      const photoId = crypto.randomUUID();
-      photoRecords.push({
-        id: photoId,
-        blob,
-        mimeType: blob.type || 'application/octet-stream',
-        createdAt: new Date().toISOString(),
-      });
-      preparedItems.push({ ...normalized, photoId, photo: undefined });
-    } catch {
-      preparedItems.push(normalized);
+    const mergedPhotoIds = getPhotoIds(normalized);
+    const fallbackInlinePhotos = [];
+
+    for (const photo of incomingPhotos) {
+      try {
+        const blob = await dataUrlToBlob(photo);
+        const photoId = crypto.randomUUID();
+        photoRecords.push({
+          id: photoId,
+          blob,
+          mimeType: blob.type || 'application/octet-stream',
+          createdAt: new Date().toISOString(),
+        });
+        mergedPhotoIds.push(photoId);
+      } catch {
+        fallbackInlinePhotos.push(photo);
+      }
     }
+
+    const uniquePhotoIds = [...new Set(mergedPhotoIds)];
+    preparedItems.push({
+      ...normalized,
+      photo: fallbackInlinePhotos[0] || null,
+      photos: fallbackInlinePhotos.length > 0 ? fallbackInlinePhotos : undefined,
+      photoId: uniquePhotoIds[0] || null,
+      photoIds: uniquePhotoIds.length > 0 ? uniquePhotoIds : undefined,
+    });
   }
 
   // Store bins and items first in their own transaction so that a photo
