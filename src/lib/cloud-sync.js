@@ -66,6 +66,26 @@ function buildHeaders(syncKey, headers = {}) {
   return out;
 }
 
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+async function gzipToBase64(text) {
+  if (typeof CompressionStream === 'undefined') return '';
+  const stream = new CompressionStream('gzip');
+  const writer = stream.writable.getWriter();
+  await writer.write(new TextEncoder().encode(text));
+  await writer.close();
+  const compressed = await new Response(stream.readable).arrayBuffer();
+  return bytesToBase64(new Uint8Array(compressed));
+}
+
 async function apiJson(path, options = {}, syncKey = '') {
   const requestHeaders = buildHeaders(syncKey, options.headers || {});
   const requestOptions = {
@@ -352,9 +372,13 @@ function createCloudSyncManager(options) {
       }
 
       setCloudMessage($, 'Uploading snapshot...');
+      const snapshotJson = JSON.stringify(payload.snapshot);
+      const snapshotGzipBase64 = await gzipToBase64(snapshotJson);
       const result = await apiJson('/api/sync/push', {
         method: 'POST',
-        body: JSON.stringify({ snapshot: payload.snapshot }),
+        body: JSON.stringify(snapshotGzipBase64
+          ? { snapshotGzipBase64 }
+          : { snapshot: payload.snapshot }),
       }, syncKey);
 
       setSyncMetaIso(localStorage, syncMetaKeys.lastCloudPushAt, new Date().toISOString());

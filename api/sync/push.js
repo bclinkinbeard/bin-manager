@@ -1,4 +1,5 @@
 import { badRequest, jsonResponse, readJson, serverError } from '../../server/json.js';
+import { gunzipSync } from 'node:zlib';
 import { requireSyncNamespace } from '../../server/sync-key.js';
 import {
   buildMetaPath,
@@ -17,18 +18,42 @@ function hasInlinePhotoData(snapshot) {
   );
 }
 
+function parseSnapshotFromBody(body) {
+  if (!body || typeof body !== 'object') {
+    throw new Error('Request body must be an object.');
+  }
+
+  if (body.snapshot && typeof body.snapshot === 'object') {
+    return body.snapshot;
+  }
+
+  if (typeof body.snapshotGzipBase64 === 'string' && body.snapshotGzipBase64.trim()) {
+    const compressed = Buffer.from(body.snapshotGzipBase64, 'base64');
+    const jsonText = gunzipSync(compressed).toString('utf8');
+    const parsed = JSON.parse(jsonText);
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Compressed snapshot must decode to an object.');
+    }
+    return parsed;
+  }
+
+  throw new Error('Request body must include a snapshot object.');
+}
+
 export async function POST(request) {
   try {
     const { namespace, response } = requireSyncNamespace(request);
     if (response) return response;
 
     const body = await readJson(request);
-    if (!body || typeof body !== 'object') return badRequest('Request body must be an object.');
-    if (!body.snapshot || typeof body.snapshot !== 'object') {
-      return badRequest('Request body must include a snapshot object.');
+    let rawSnapshot;
+    try {
+      rawSnapshot = parseSnapshotFromBody(body);
+    } catch (error) {
+      return badRequest(error.message || 'Request body must include a snapshot object.');
     }
 
-    const snapshot = sanitizeSnapshot(body.snapshot);
+    const snapshot = sanitizeSnapshot(rawSnapshot);
     if (hasInlinePhotoData(snapshot)) {
       return badRequest('Snapshot items must not include inline photo data. Upload photos separately.');
     }
@@ -63,3 +88,5 @@ export async function POST(request) {
     return serverError(error.message || 'Failed to push cloud snapshot.');
   }
 }
+
+export { parseSnapshotFromBody };
