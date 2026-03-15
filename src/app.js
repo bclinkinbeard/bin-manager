@@ -20,8 +20,8 @@ import {
   getLatestLocalSyncMs,
 } from './lib/sync-meta.js';
 
-const APP_VERSION = '2026.03.09-v29';
-const APP_CACHE_VERSION = 'binmanager-v29';
+const APP_VERSION = '2026.03.15-v40';
+const APP_CACHE_VERSION = 'binmanager-v40';
 
 // ── DOM refs ──
 
