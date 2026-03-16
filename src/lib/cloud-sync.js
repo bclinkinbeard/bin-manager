@@ -265,6 +265,48 @@ function getItemPhotoDataUrls(item) {
   ])];
 }
 
+function normalizePhotoHash(value) {
+  const hash = String(value || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(hash)) return '';
+  return hash;
+}
+
+function getSnapshotPhotoHashes(items) {
+  return [...new Set(
+    (items || [])
+      .map((item) => normalizePhotoHash(item?.photoHash))
+      .filter(Boolean)
+  )];
+}
+
+function buildLocalPhotoDataUrlMapByHash(items) {
+  const map = new Map();
+
+  for (const item of items || []) {
+    const hash = normalizePhotoHash(item?.photoHash);
+    if (!hash || map.has(hash)) continue;
+    const photos = getItemPhotoDataUrls(item);
+    if (photos[0]) {
+      map.set(hash, photos[0]);
+    }
+  }
+
+  return map;
+}
+
+function planPullPhotoHydration(snapshotItems, localItems) {
+  const photoHashes = getSnapshotPhotoHashes(snapshotItems);
+  const photoMap = buildLocalPhotoDataUrlMapByHash(localItems);
+  const missingPhotoHashes = photoHashes.filter((hash) => !photoMap.has(hash));
+
+  return {
+    photoHashes,
+    photoMap,
+    missingPhotoHashes,
+    reusedCount: photoHashes.length - missingPhotoHashes.length,
+  };
+}
+
 function areStringArraysEqual(left, right) {
   if (left.length !== right.length) return false;
   for (let i = 0; i < left.length; i += 1) {
@@ -562,19 +604,32 @@ function createCloudSyncManager(options) {
       }
 
       const snapshot = pulled.snapshot;
-      const photoHashes = [...new Set(
-        (snapshot.items || [])
-          .map((item) => (typeof item.photoHash === 'string' ? item.photoHash.trim().toLowerCase() : ''))
-          .filter(Boolean)
-      )];
+      const localItems = typeof db.getAllItemsWithPhotos === 'function'
+        ? await db.getAllItemsWithPhotos()
+        : [];
+      const {
+        photoHashes,
+        photoMap,
+        missingPhotoHashes,
+        reusedCount,
+      } = planPullPhotoHydration(snapshot.items || [], localItems);
 
-      setCloudMessage($, `Downloading ${photoHashes.length} photo(s)...`);
-      const photoMap = await fetchPhotoDataUrlsByHash(photoHashes, syncKey);
+      if (missingPhotoHashes.length > 0) {
+        const reuseLabel = reusedCount > 0 ? `; reusing ${reusedCount} cached` : '';
+        setCloudMessage($, `Downloading ${missingPhotoHashes.length} missing photo(s)${reuseLabel}...`);
+        const fetchedPhotoMap = await fetchPhotoDataUrlsByHash(missingPhotoHashes, syncKey);
+        for (const [hash, dataUrl] of fetchedPhotoMap.entries()) {
+          photoMap.set(hash, dataUrl);
+        }
+      } else if (photoHashes.length > 0) {
+        setCloudMessage($, `Reusing ${photoHashes.length} cached photo(s)...`);
+      }
 
       const hydratedItems = (snapshot.items || []).map((item) => {
         const next = { ...item };
-        if (next.photoHash && photoMap.has(next.photoHash)) {
-          next.photo = photoMap.get(next.photoHash);
+        const hash = normalizePhotoHash(next.photoHash);
+        if (hash && photoMap.has(hash)) {
+          next.photo = photoMap.get(hash);
         }
         return next;
       });
@@ -672,10 +727,13 @@ function createCloudSyncManager(options) {
 
 export {
   buildPlainSnapshotRequestBody,
+  buildLocalPhotoDataUrlMapByHash,
   buildSnapshotPayload,
   createCloudSyncManager,
   dataUrlToBlob,
   estimateDataUrlBytes,
+  getSnapshotPhotoHashes,
   normalizeLegacyPhotosForCloud,
+  planPullPhotoHydration,
   shouldRetrySnapshotPushWithGzip,
 };

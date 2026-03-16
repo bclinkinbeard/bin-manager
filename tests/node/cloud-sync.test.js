@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildLocalPhotoDataUrlMapByHash,
   buildPlainSnapshotRequestBody,
   buildSnapshotPayload,
   dataUrlToBlob,
   estimateDataUrlBytes,
+  getSnapshotPhotoHashes,
   normalizeLegacyPhotosForCloud,
+  planPullPhotoHydration,
   shouldRetrySnapshotPushWithGzip,
 } from '../../src/lib/cloud-sync.js';
 
@@ -98,4 +101,61 @@ test('normalizeLegacyPhotosForCloud rewrites oversized cached photos', async () 
   assert.deepEqual(savedItems[0].photos, [SAMPLE_PHOTO]);
   assert.equal(savedItems[0].photoId, undefined);
   assert.equal(savedItems[0].photoIds, undefined);
+});
+
+test('buildLocalPhotoDataUrlMapByHash maps cached photos by normalized hash', () => {
+  const map = buildLocalPhotoDataUrlMapByHash([
+    {
+      id: 'item-1',
+      photoHash: 'A'.repeat(64),
+      photo: SAMPLE_PHOTO,
+      photos: [SAMPLE_PHOTO],
+    },
+    {
+      id: 'item-2',
+      photoHash: 'b'.repeat(64),
+      photos: ['not-a-data-url'],
+    },
+    {
+      id: 'item-3',
+      photoHash: 'A'.repeat(64),
+      photo: 'data:image/png;base64,BBBB',
+    },
+  ]);
+
+  assert.equal(map.size, 1);
+  assert.equal(map.get('a'.repeat(64)), SAMPLE_PHOTO);
+});
+
+test('getSnapshotPhotoHashes de-duplicates and normalizes snapshot hashes', () => {
+  assert.deepEqual(
+    getSnapshotPhotoHashes([
+      { photoHash: 'A'.repeat(64) },
+      { photoHash: 'a'.repeat(64) },
+      { photoHash: 'invalid' },
+      {},
+    ]),
+    ['a'.repeat(64)]
+  );
+});
+
+test('planPullPhotoHydration only marks uncached photo hashes for download', () => {
+  const reusedHash = 'a'.repeat(64);
+  const missingHash = 'b'.repeat(64);
+  const result = planPullPhotoHydration(
+    [
+      { id: 'remote-1', photoHash: reusedHash },
+      { id: 'remote-2', photoHash: missingHash },
+      { id: 'remote-3', photoHash: reusedHash },
+    ],
+    [
+      { id: 'local-1', photoHash: reusedHash.toUpperCase(), photo: SAMPLE_PHOTO },
+      { id: 'local-2', photoHash: 'c'.repeat(64), photo: 'data:image/png;base64,BBBB' },
+    ]
+  );
+
+  assert.deepEqual(result.photoHashes, [reusedHash, missingHash]);
+  assert.deepEqual(result.missingPhotoHashes, [missingHash]);
+  assert.equal(result.reusedCount, 1);
+  assert.equal(result.photoMap.get(reusedHash), SAMPLE_PHOTO);
 });
