@@ -78,3 +78,21 @@ test('prepareImportData keeps photo hash metadata for cloud snapshots', () => {
   assert.equal(result.data.items[0].photoHash, 'a'.repeat(64));
   assert.equal(result.data.items[0].photoMimeType, 'image/jpeg');
 });
+
+
+test('prepareImportData keeps bin label and modification timestamps', () => {
+  const result = prepareImportData({
+    version: 1,
+    bins: [{
+      id: 'BIN-001',
+      createdAt: '2026-03-16T00:00:00.000Z',
+      lastModifiedAt: '2026-03-16T01:00:00.000Z',
+      labelPrintedAt: '2026-03-16T02:00:00.000Z',
+    }],
+    items: [],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.bins[0].lastModifiedAt, '2026-03-16T01:00:00.000Z');
+  assert.equal(result.data.bins[0].labelPrintedAt, '2026-03-16T02:00:00.000Z');
+});

@@ -1,3 +1,5 @@
+import { isBinLabelOutdated } from '../lib/label-status.js';
+
 function createBinsView({ db, $, esc, formatBinId, openBin, openBinForm }) {
   async function renderBins() {
     const bins = (await db.getAllBins()).filter((b) => !b.archived);
@@ -15,6 +17,7 @@ function createBinsView({ db, $, esc, formatBinId, openBin, openBinForm }) {
         <canvas data-qr-id="${esc(b.id)}"></canvas>
         <div class="label-text">${esc(b.id)}</div>
         <div class="label-name">${esc(b.name || '')}</div>
+        <div class="label-state">${isBinLabelOutdated(b) ? 'Needs reprint' : 'Up to date'}</div>
       </button>`
       )
       .join('');
@@ -37,7 +40,14 @@ function createBinsView({ db, $, esc, formatBinId, openBin, openBinForm }) {
       if (card) openBin(card.dataset.binId);
     });
 
-    $('bins-print').addEventListener('click', () => window.print());
+    $('bins-print').addEventListener('click', async () => {
+      const ids = (await db.getAllBins()).filter((b) => !b.archived).map((b) => b.id);
+      if (ids.length > 0) {
+        await db.markBinsLabelPrinted(ids);
+      }
+      window.print();
+      await renderBins();
+    });
 
     $('bins-add').addEventListener('click', async () => {
       const next = await db.getNextBinNumber();

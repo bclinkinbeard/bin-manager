@@ -31,12 +31,17 @@ function normalizeBoolean(value, fallback = false) {
 }
 
 function normalizeBin(bin, nowIso) {
+  const createdAt = normalizeIso(bin.createdAt, nowIso);
   return {
     id: String(bin.id).trim(),
     name: typeof bin.name === 'string' ? bin.name.trim() : '',
     location: typeof bin.location === 'string' ? bin.location.trim() : '',
     description: typeof bin.description === 'string' ? bin.description.trim() : '',
-    createdAt: normalizeIso(bin.createdAt, nowIso),
+    createdAt,
+    lastModifiedAt: normalizeIso(bin.lastModifiedAt, createdAt),
+    labelPrintedAt: typeof bin.labelPrintedAt === 'string' && !Number.isNaN(Date.parse(bin.labelPrintedAt))
+      ? normalizeIso(bin.labelPrintedAt, nowIso)
+      : undefined,
     archived: normalizeBoolean(bin.archived, false),
   };
 }
