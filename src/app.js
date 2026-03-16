@@ -12,6 +12,7 @@ import { createSearchView } from './views/search.js';
 import { createItemFormView } from './views/item-form.js';
 import { createBinsView } from './views/bins.js';
 import { createCloudSyncManager } from './lib/cloud-sync.js';
+import { isBinLabelOutdated } from './lib/label-status.js';
 import {
   parseValidIso,
   getSyncMetaIso,
@@ -20,8 +21,8 @@ import {
   getLatestLocalSyncMs,
 } from './lib/sync-meta.js';
 
-const APP_VERSION = '2026.03.15-v46';
-const APP_CACHE_VERSION = 'binmanager-v46';
+const APP_VERSION = '2026.03.16-v47';
+const APP_CACHE_VERSION = 'binmanager-v47';
 
 // ── DOM refs ──
 
@@ -581,6 +582,9 @@ async function openBin(id, options = {}) {
   $('bin-detail-name').textContent = bin.name || '';
   $('bin-detail-loc').textContent = bin.location || '';
   $('bin-detail-desc').textContent = bin.description || '';
+  $('bin-label-status').textContent = isBinLabelOutdated(bin)
+    ? 'Label status: out of date (reprint recommended)'
+    : 'Label status: up to date';
 
   // Archive badge
   $('bin-detail-archive-badge').style.display = bin.archived ? 'inline' : 'none';
@@ -893,11 +897,15 @@ function renderPrintBinSummary() {
   });
 }
 
-$('bin-print-contents').addEventListener('click', () => {
+$('bin-print-contents').addEventListener('click', async () => {
+  if (currentBinId) {
+    await db.markBinsLabelPrinted([currentBinId]);
+  }
   document.body.classList.add('print-bin-contents-mode');
   renderPrintBinSummary();
   renderBinItems();
   requestAnimationFrame(() => window.print());
+  await openBin(currentBinId);
 });
 
 window.addEventListener('afterprint', () => {

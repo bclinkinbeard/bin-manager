@@ -105,6 +105,48 @@ function normalizeItemForStorage(item) {
   };
 }
 
+function safeIso(value) {
+  if (typeof value !== 'string') return null;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
+function normalizeBinForStorage(bin, existingBin = null, nowIso = new Date().toISOString()) {
+  const createdAt = safeIso(bin && bin.createdAt)
+    || safeIso(existingBin && existingBin.createdAt)
+    || nowIso;
+
+  const base = {
+    ...(existingBin || {}),
+    ...(bin || {}),
+    createdAt,
+  };
+
+  const incomingLastModifiedAt = safeIso(bin && bin.lastModifiedAt);
+  const previousLastModifiedAt = safeIso(existingBin && existingBin.lastModifiedAt);
+  const incomingPrintedAt = safeIso(bin && bin.labelPrintedAt);
+  const previousPrintedAt = safeIso(existingBin && existingBin.labelPrintedAt);
+
+  if (incomingLastModifiedAt) {
+    base.lastModifiedAt = incomingLastModifiedAt;
+  } else if (previousLastModifiedAt) {
+    base.lastModifiedAt = previousLastModifiedAt;
+  } else {
+    base.lastModifiedAt = createdAt;
+  }
+
+  if (incomingPrintedAt) {
+    base.labelPrintedAt = incomingPrintedAt;
+  } else if (incomingPrintedAt === null && Object.prototype.hasOwnProperty.call(bin || {}, 'labelPrintedAt')) {
+    delete base.labelPrintedAt;
+  } else if (previousPrintedAt) {
+    base.labelPrintedAt = previousPrintedAt;
+  }
+
+  return base;
+}
+
 function isDataUrlPhoto(value) {
   return typeof value === 'string' && value.startsWith('data:image/');
 }
@@ -274,18 +316,87 @@ async function getBin(id) {
 
 async function putBin(bin) {
   await open();
-  const result = await req(tx('bins', 'readwrite').put(bin));
+  const existing = bin && bin.id ? await req(tx('bins', 'readonly').get(bin.id)) : null;
+  const nowIso = new Date().toISOString();
+  const normalized = normalizeBinForStorage({
+    ...bin,
+    lastModifiedAt: nowIso,
+  }, existing, nowIso);
+  const result = await req(tx('bins', 'readwrite').put(normalized));
   bumpDataVersion();
   return result;
 }
 
 async function putBins(bins) {
   await open();
+  const nowIso = new Date().toISOString();
+  const ids = [...new Set((Array.isArray(bins) ? bins : [])
+    .map((bin) => String(bin && bin.id ? bin.id : '').trim())
+    .filter(Boolean))];
+  const existingMap = new Map();
+  if (ids.length > 0) {
+    const existingBins = await Promise.all(ids.map((id) => req(tx('bins', 'readonly').get(id))));
+    for (const existing of existingBins) {
+      if (existing && existing.id) existingMap.set(existing.id, existing);
+    }
+  }
+
   const t = db.transaction('bins', 'readwrite');
   const store = t.objectStore('bins');
-  for (const bin of bins) store.put(bin);
+  for (const bin of bins) {
+    const existing = bin && bin.id ? existingMap.get(bin.id) : null;
+    store.put(normalizeBinForStorage(bin, existing, nowIso));
+  }
   await txComplete(t);
   bumpDataVersion();
+}
+
+async function touchBins(binIds, modifiedAt = new Date().toISOString()) {
+  await open();
+  const normalizedIds = [...new Set((Array.isArray(binIds) ? binIds : [])
+    .map((binId) => String(binId || '').trim())
+    .filter(Boolean))];
+  if (!normalizedIds.length) return 0;
+
+  const t = db.transaction('bins', 'readwrite');
+  const store = t.objectStore('bins');
+  let updated = 0;
+  for (const binId of normalizedIds) {
+    const bin = await req(store.get(binId));
+    if (!bin) continue;
+    const existingMs = Date.parse(bin.lastModifiedAt || '');
+    const nextMs = Date.parse(modifiedAt);
+    if (Number.isFinite(existingMs) && Number.isFinite(nextMs) && existingMs >= nextMs) continue;
+    store.put({ ...bin, lastModifiedAt: modifiedAt });
+    updated++;
+  }
+
+  await txComplete(t);
+  if (updated > 0) bumpDataVersion();
+  return updated;
+}
+
+async function markBinsLabelPrinted(binIds, printedAt = new Date().toISOString()) {
+  await open();
+  const normalizedIds = [...new Set((Array.isArray(binIds) ? binIds : [])
+    .map((binId) => String(binId || '').trim())
+    .filter(Boolean))];
+  if (!normalizedIds.length) return 0;
+
+  const t = db.transaction('bins', 'readwrite');
+  const store = t.objectStore('bins');
+  let updated = 0;
+  for (const binId of normalizedIds) {
+    const bin = await req(store.get(binId));
+    if (!bin) continue;
+    if (bin.labelPrintedAt === printedAt) continue;
+    store.put({ ...bin, labelPrintedAt: printedAt });
+    updated++;
+  }
+
+  await txComplete(t);
+  if (updated > 0) bumpDataVersion();
+  return updated;
 }
 
 async function getItemsByBinRaw(binId) {
@@ -392,6 +503,9 @@ async function putItem(item) {
   const existing = item && item.id ? await req(tx('items', 'readonly').get(item.id)) : null;
   const itemForStorage = await ensureBlobBackedPhoto(item);
   const result = await req(tx('items', 'readwrite').put(itemForStorage));
+  const touchedBinIds = new Set([itemForStorage.binId]);
+  if (existing && existing.binId) touchedBinIds.add(existing.binId);
+  await touchBins([...touchedBinIds]);
   if (existing) {
     const oldPhotoIds = [...new Set([existing.photoId, ...(Array.isArray(existing.photoIds) ? existing.photoIds : [])].filter(Boolean))];
     await Promise.all(oldPhotoIds.map((photoId) => deletePhotoIfUnused(photoId)));
@@ -440,6 +554,7 @@ async function updateItemTags(itemIds, options = {}) {
     store.put(normalizeItemForStorage(item));
   }
   await txComplete(t);
+  await touchBins([...new Set(updatedItems.map((item) => item.binId))]);
   bumpDataVersion();
   return updatedItems.length;
 }
@@ -456,6 +571,7 @@ async function moveItemsToBin(itemIds, targetBinId) {
   const t = db.transaction('items', 'readwrite');
   const store = t.objectStore('items');
   let movedCount = 0;
+  const touchedBinIds = new Set([safeTargetBinId]);
 
   for (const itemId of normalizedIds) {
     const item = await req(store.get(itemId));
@@ -464,11 +580,15 @@ async function moveItemsToBin(itemIds, targetBinId) {
       ...item,
       binId: safeTargetBinId,
     });
+    touchedBinIds.add(item.binId);
     movedCount++;
   }
 
   await txComplete(t);
-  if (movedCount > 0) bumpDataVersion();
+  if (movedCount > 0) {
+    await touchBins([...touchedBinIds]);
+    bumpDataVersion();
+  }
   return movedCount;
 }
 
@@ -476,6 +596,9 @@ async function deleteItem(id) {
   await open();
   const item = await req(tx('items', 'readonly').get(id));
   await req(tx('items', 'readwrite').delete(id));
+  if (item && item.binId) {
+    await touchBins([item.binId]);
+  }
   if (item) {
     const photoIds = [...new Set([item.photoId, ...(Array.isArray(item.photoIds) ? item.photoIds : [])].filter(Boolean))];
     await Promise.all(photoIds.map((photoId) => deletePhotoIfUnused(photoId)));
@@ -714,4 +837,6 @@ export {
   importAll,
   getAllTags,
   getDataVersion,
+  touchBins,
+  markBinsLabelPrinted,
 };
