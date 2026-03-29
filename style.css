@@ -984,6 +984,11 @@ body {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.bins-controls .btn {
+  flex: 1 1 180px;
 }
 
 .label-grid {
@@ -996,7 +1001,7 @@ body {
   background: #fff;
   border-radius: 6px;
   width: 100%;
-  max-width: 260px;
+  max-width: min(260px, 100%);
   aspect-ratio: 1 / 1;
   padding: 16px 12px;
   text-align: center;
@@ -1332,6 +1337,16 @@ body {
     gap: 10px;
   }
 
+  .label-card {
+    max-width: 100%;
+    min-height: 280px;
+    aspect-ratio: auto;
+  }
+
+  .label-card canvas {
+    width: min(100%, 200px);
+  }
+
   /* Prevent item description from forcing horizontal scroll */
   .item-card .item-desc {
     white-space: normal;
@@ -1345,7 +1360,13 @@ body {
 
   /* Bins controls: wrap on small screens */
   .bins-controls {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bins-controls .btn {
+    flex: 1 1 auto;
+    width: 100%;
   }
 
   /* Bin action buttons: wrap comfortably */
