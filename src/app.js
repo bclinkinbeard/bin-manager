@@ -5,9 +5,11 @@ import { createToast } from './ui/toast.js';
 import { createConfirmAction } from './ui/modal.js';
 import { buildRouteFromState, parseRouteFromHash as parseHashRoute } from './lib/routes.js';
 import { parseTags } from './lib/tags.js';
+import { parseLinks, isTweetUrl } from './lib/links.js';
 import { sortItems } from './lib/sort.js';
 import { prepareImportData } from './lib/import-validation.js';
 import { formatBinId } from './lib/ids.js';
+import { fetchLinkPreview } from './lib/link-previews.js';
 import { createSearchView } from './views/search.js';
 import { createItemFormView } from './views/item-form.js';
 import { createBinsView } from './views/bins.js';
@@ -156,6 +158,48 @@ function resetBulkTagState() {
   const input = $('bin-bulk-tags-input');
   if (input) input.value = '';
   updateBulkTagUi();
+}
+
+function renderItemLinks(item, { compact = false } = {}) {
+  const links = Array.isArray(item.links) ? item.links : [];
+  if (!links.length) return '';
+  return `
+    <div class="item-links${compact ? ' item-links-compact' : ''}">
+      ${links.map((url) => `
+        <div class="item-link-card${isTweetUrl(url) ? ' item-link-card-tweet' : ''}" data-link-preview-url="${escAttr(url)}">
+          <a class="item-link-url" href="${escAttr(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>
+          <div class="item-link-preview-body">Loading preview…</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function hydrateLinkPreviews(container) {
+  if (!container) return;
+  const cards = [...container.querySelectorAll('[data-link-preview-url]')];
+  await Promise.all(cards.map(async (card) => {
+    const body = card.querySelector('.item-link-preview-body');
+    const url = card.dataset.linkPreviewUrl;
+    if (!body || !url) return;
+    const preview = await fetchLinkPreview(url);
+    if (!preview) {
+      body.textContent = 'Preview unavailable.';
+      return;
+    }
+    if (preview.type === 'tweet') {
+      body.innerHTML = `<iframe class="tweet-embed-frame" src="https://twitframe.com/show?url=${encodeURIComponent(url)}" loading="lazy" referrerpolicy="no-referrer" title="Embedded tweet"></iframe>`;
+      return;
+    }
+    const title = preview.title || url;
+    const summary = preview.summary || '';
+    const meta = preview.siteName || '';
+    body.innerHTML = `
+      <a class="item-link-preview-title" href="${escAttr(url)}" target="_blank" rel="noopener noreferrer">${esc(title)}</a>
+      ${meta ? `<div class="item-link-preview-site">${esc(meta)}</div>` : ''}
+      ${summary ? `<div class="item-link-preview-summary">${esc(summary)}</div>` : ''}
+    `;
+  }));
 }
 
 function toggleBulkTagSelection(itemId) {
@@ -476,6 +520,7 @@ const itemFormView = createItemFormView({
   esc,
   formatBinId,
   parseTags,
+  parseLinks,
   showView,
   openBin: (binId) => openBin(binId),
   refreshSearch: () => refreshSearch(),
@@ -644,6 +689,7 @@ function renderBinItems() {
         <div class="item-info">
           <div class="item-desc">${esc(item.description)}</div>
 	  ${tagsMarkup}
+          ${isSelectableMode ? '' : renderItemLinks(item)}
           <div class="item-date">${formatDate(item.addedAt)}</div>
         </div>
 	${isSelectableMode ? '' : `<div class="item-actions">
@@ -668,6 +714,8 @@ function renderBinItems() {
     updateBulkTagUi();
     return;
   }
+
+  hydrateLinkPreviews(container);
 
   container.querySelectorAll('.item-delete').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
@@ -749,6 +797,7 @@ async function openTagResults(tag, originBinId, options = {}) {
         <div class="item-info">
           <div class="item-desc">${esc(item.description)}</div>
           ${(item.tags && item.tags.length) ? `<div class="item-tags">${item.tags.map(t => `<button type="button" class="tag-chip tag-chip-btn" data-tag="${escAttr(t)}">${esc(t)}</button>`).join('')}</div>` : ''}
+          ${renderItemLinks(item, { compact: true })}
           <div class="item-date">${esc(item.binId)}${bin && bin.name ? ` - ${esc(bin.name)}` : ''} | ${formatDate(item.addedAt)}</div>
         </div>
         <div class="item-actions">
@@ -763,6 +812,8 @@ async function openTagResults(tag, originBinId, options = {}) {
       openBin(btn.dataset.openBinId);
     });
   });
+
+  hydrateLinkPreviews(container);
 
   container.querySelectorAll('.tag-chip-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {

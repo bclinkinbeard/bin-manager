@@ -13,12 +13,21 @@ function getSelectableBins(bins, selectedBinId) {
   return selectedBin ? [selectedBin, ...activeBins] : activeBins;
 }
 
+function linksToTextareaValue(links) {
+  if (!Array.isArray(links) || links.length === 0) return '';
+  return links
+    .map((link) => String(link || '').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
 function createItemFormView({
   db,
   $,
   esc,
   formatBinId,
   parseTags,
+  parseLinks,
   showView,
   openBin,
   refreshSearch,
@@ -121,6 +130,7 @@ function createItemFormView({
     setCurrentEditItemId(null);
     $('item-form-desc').value = '';
     $('item-form-tags').value = '';
+    $('item-form-links').value = '';
     $('item-form-title').textContent = 'Add Item';
     updatePhotoUiForMode(false);
     setPhotos([]);
@@ -135,6 +145,7 @@ function createItemFormView({
     setCurrentEditItemId(itemId);
     $('item-form-desc').value = item.description || '';
     $('item-form-tags').value = (item.tags || []).join(', ');
+    $('item-form-links').value = linksToTextareaValue(item.links);
     $('item-form-title').textContent = 'Edit Item';
     updatePhotoUiForMode(true);
 
@@ -186,9 +197,9 @@ function createItemFormView({
     $('item-form-save').addEventListener('click', async () => {
       const desc = $('item-form-desc').value.trim();
       const hasPhoto = currentPhotos.length > 0;
-      if (!desc && !hasPhoto) return;
-
       const tags = parseTags($('item-form-tags').value.trim());
+      const links = parseLinks($('item-form-links').value);
+      if (!desc && !hasPhoto && !tags.length && !links.length) return;
       if (!desc && !tags.length) {
         tags.push('unlabeled');
       }
@@ -212,6 +223,7 @@ function createItemFormView({
         photos: currentPhotos,
         photoId: getCurrentPhotoId(),
         tags,
+        links,
         addedAt,
       });
       setCurrentPhoto(null);

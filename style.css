@@ -556,6 +556,59 @@ body {
   margin-top: 2px;
 }
 
+.item-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.item-link-card {
+  border: 1px solid var(--surface2);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 8px;
+}
+
+.item-link-url {
+  color: var(--accent);
+  font-size: 11px;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
+.item-link-preview-body {
+  margin-top: 6px;
+}
+
+.item-link-preview-title {
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.item-link-preview-site {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.item-link-preview-summary {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.35;
+}
+
+.tweet-embed-frame {
+  width: 100%;
+  min-height: 320px;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+}
+
 .item-actions {
   display: flex;
   gap: 2px;

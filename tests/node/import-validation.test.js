@@ -79,6 +79,21 @@ test('prepareImportData keeps photo hash metadata for cloud snapshots', () => {
   assert.equal(result.data.items[0].photoMimeType, 'image/jpeg');
 });
 
+test('prepareImportData normalizes links arrays', () => {
+  const result = prepareImportData({
+    version: 1,
+    bins: [{ id: 'BIN-001' }],
+    items: [{
+      id: 'i1',
+      binId: 'BIN-001',
+      links: [' https://example.com ', 'https://example.com', 'javascript:alert(1)'],
+    }],
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.data.items[0].links, ['https://example.com']);
+});
+
 
 test('prepareImportData keeps bin label and modification timestamps', () => {
   const result = prepareImportData({

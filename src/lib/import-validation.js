@@ -19,6 +19,15 @@ function normalizeTags(tags) {
   )];
 }
 
+function normalizeLinks(links) {
+  if (!Array.isArray(links)) return [];
+  return [...new Set(
+    links
+      .map((link) => String(link || '').trim())
+      .filter((link) => /^https?:\/\//i.test(link))
+  )];
+}
+
 function normalizeBoolean(value, fallback = false) {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value !== 0;
@@ -52,6 +61,7 @@ function normalizeItem(item, nowIso) {
     binId: String(item.binId).trim(),
     description: typeof item.description === 'string' ? item.description.trim() : '',
     tags: normalizeTags(item.tags),
+    links: normalizeLinks(item.links),
     addedAt: normalizeIso(item.addedAt, nowIso),
   };
 

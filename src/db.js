@@ -99,9 +99,15 @@ function normalizeTags(tags) {
 }
 
 function normalizeItemForStorage(item) {
+  const links = Array.isArray(item && item.links)
+    ? [...new Set(item.links
+      .map((link) => String(link || '').trim())
+      .filter((link) => /^https?:\/\//i.test(link)))]
+    : [];
   return {
     ...item,
     tags: normalizeTagList(item.tags),
+    links,
   };
 }
 
